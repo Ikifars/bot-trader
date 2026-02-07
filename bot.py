@@ -6,6 +6,19 @@ import yfinance as yf
 from tkinter import *
 from tkinter import ttk
 from datetime import datetime
+import winsound
+
+# ================= CONFIGURAÇÕES TÉCNICAS ADAPTÁVEIS =================
+CONFIG = {
+    "RSI_PERIODO": 14,
+    "EMA_CURTA": 9,
+    "EMA_LONGA": 21,
+    "EMA_TENDENCIA": 100,
+    "ADX_PERIODO": 14,
+    "ADX_MINIMO": 25,
+    "CCI_PERIODO": 20,
+    "CCI_EXTREMO": 100,
+}
 
 # ================= VARIÁVEIS GLOBAIS =================
 rodando = False
@@ -26,92 +39,100 @@ def calcular_forca_vela(df):
         range_total = corpo if corpo > 0 else 0.00001
     return round((corpo / range_total) * 100, 1)
 
-def calcular_forca_sinal(sinal_tipo, forca_vela, rsi=50, macd_diff=0, stochastic_diff=0, bb_diff=0):
-    base = forca_vela * 0.5
-    rsi_factor = max(0, 50 - abs(50 - rsi)) * 0.3
-    macd_factor = abs(macd_diff) * 10
-    stochastic_factor = abs(stochastic_diff) * 5
-    bb_factor = abs(bb_diff) * 5
-    if sinal_tipo in ["📈 CALL", "📉 PUT"]:
-        return min(round(base + rsi_factor + macd_factor + stochastic_factor + bb_factor, 1), 100)
-    return 0
+def calcular_forca_sinal(sinal_tipo, forca_vela, rsi=50, macd_diff=0, stochastic_diff=0, bb_diff=0, adx=0):
+    if "AGUARDAR" in sinal_tipo: return 0
+    base = forca_vela * 0.4
+    rsi_factor = max(0, 50 - abs(50 - rsi)) * 0.2
+    adx_factor = (adx / 100) * 15
+    return min(round(base + rsi_factor + adx_factor + 30, 1), 100)
 
 # ================= ESTRATÉGIAS =================
+def estrategia_sniper_pro(df):
+    u = df.iloc[-1]
+    tendencia_alta = u['close'] > u['ema_trend']
+    sinal, cor = "⏳ AGUARDAR", "yellow"
+    if u['close'] <= u['bb_low'] and u['rsi'] < 30 and tendencia_alta and u['adx'] > CONFIG["ADX_MINIMO"]:
+        sinal, cor = "📈 CALL SNIPER", "#00ff99"
+    elif u['close'] >= u['bb_high'] and u['rsi'] > 70 and not tendencia_alta and u['adx'] > CONFIG["ADX_MINIMO"]:
+        sinal, cor = "📉 PUT SNIPER", "#ff5555"
+    fv = calcular_forca_vela(df)
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], adx=u['adx'])
+
+def estrategia_cci_reversa(df):
+    u = df.iloc[-1]
+    sinal, cor = "⏳ AGUARDAR", "yellow"
+    if u['cci'] < -CONFIG["CCI_EXTREMO"]: sinal, cor = "📈 CALL CCI", "#00ffff"
+    elif u['cci'] > CONFIG["CCI_EXTREMO"]: sinal, cor = "📉 PUT CCI", "#ff00ff"
+    fv = calcular_forca_vela(df)
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'])
+
 def estrategia_rsi_ema(df):
     u = df.iloc[-1]; a = df.iloc[-2]
-    forca_vela = calcular_forca_vela(df)
+    fv = calcular_forca_vela(df)
     sinal, cor = "⏳ AGUARDAR", "yellow"
     if u['rsi'] < 45 and a['ema9'] < a['ema21'] and u['ema9'] > u['ema21']: sinal, cor = "📈 CALL", "#00ff99"
     elif u['rsi'] > 55 and a['ema9'] > a['ema21'] and u['ema9'] < u['ema21']: sinal, cor = "📉 PUT", "#ff5555"
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'])
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], adx=u['adx'])
 
 def estrategia_ema_trend(df):
-    u = df.iloc[-1]; forca_vela = calcular_forca_vela(df)
+    u = df.iloc[-1]; fv = calcular_forca_vela(df)
     sinal, cor = "⏳ AGUARDAR", "yellow"
     if u['ema9'] > u['ema21'] and u['rsi'] > 45: sinal, cor = "📈 CALL", "#00ffaa"
     elif u['ema9'] < u['ema21'] and u['rsi'] < 55: sinal, cor = "📉 PUT", "#ff6666"
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'])
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], adx=u['adx'])
 
 def estrategia_rsi_extremo(df):
-    u = df.iloc[-1]; forca_vela = calcular_forca_vela(df)
+    u = df.iloc[-1]; fv = calcular_forca_vela(df)
     sinal, cor = "⏳ AGUARDAR", "yellow"
     if u['rsi'] <= 30: sinal, cor = "📈 CALL", "#00ff99"
     elif u['rsi'] >= 70: sinal, cor = "📉 PUT", "#ff5555"
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'])
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], adx=u['adx'])
 
 def estrategia_macd(df):
     macd = ta.trend.MACD(df['close'])
-    df['macd'] = macd.macd(); df['signal'] = macd.macd_signal()
-    a, u = df.iloc[-2], df.iloc[-1]; forca_vela = calcular_forca_vela(df)
-    macd_diff = u['macd'] - u['signal']
+    df['macd_val'] = macd.macd(); df['macd_signal'] = macd.macd_signal()
+    a, u = df.iloc[-2], df.iloc[-1]; fv = calcular_forca_vela(df)
+    macd_diff = u['macd_val'] - u['macd_signal']
     sinal, cor = "⏳ AGUARDAR", "yellow"
-    if a['macd'] < a['signal'] and u['macd'] > u['signal']: sinal, cor = "📈 CALL", "#00ff99"
-    elif a['macd'] > a['signal'] and u['macd'] < u['signal']: sinal, cor = "📉 PUT", "#ff5555"
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'], macd_diff=macd_diff)
-    return sinal, cor, forca_vela, forca_sinal
+    if a['macd_val'] < a['macd_signal'] and u['macd_val'] > u['macd_signal']: sinal, cor = "📈 CALL", "#00ff99"
+    elif a['macd_val'] > a['macd_signal'] and u['macd_val'] < u['macd_signal']: sinal, cor = "📉 PUT", "#ff5555"
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], macd_diff=macd_diff, adx=u['adx'])
 
 def estrategia_confluencia(df):
-    u = df.iloc[-1]; forca_vela = calcular_forca_vela(df)
+    u = df.iloc[-1]; fv = calcular_forca_vela(df)
     sinal, cor = "⏳ AGUARDAR", "yellow"
     if u['ema9'] > u['ema21'] and 40 < u['rsi'] < 55: sinal, cor = "📈 CALL", "#00ffaa"
     elif u['ema9'] < u['ema21'] and 45 < u['rsi'] < 60: sinal, cor = "📉 PUT", "#ff6666"
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'])
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], adx=u['adx'])
 
 def estrategia_bollinger(df):
-    bb = ta.volatility.BollingerBands(df['close'])
-    df['bb_high'] = bb.bollinger_hband(); df['bb_low'] = bb.bollinger_lband()
-    u = df.iloc[-1]; forca_vela = calcular_forca_vela(df)
+    u = df.iloc[-1]; fv = calcular_forca_vela(df)
     sinal, cor, bb_diff = "⏳ AGUARDAR", "yellow", 0
     if u['close'] < u['bb_low']: sinal, cor, bb_diff = "📈 CALL", "#00ff99", u['bb_low'] - u['close']
     elif u['close'] > u['bb_high']: sinal, cor, bb_diff = "📉 PUT", "#ff5555", u['close'] - u['bb_high']
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'], bb_diff=bb_diff)
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], bb_diff=bb_diff, adx=u['adx'])
 
 def estrategia_stochastic(df):
     stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'])
-    df['stoch'] = stoch.stoch(); df['stoch_signal'] = stoch.stoch_signal()
-    u, a = df.iloc[-1], df.iloc[-2]; forca_vela = calcular_forca_vela(df)
-    sinal, cor, stochastic_diff = "⏳ AGUARDAR", "yellow", 0
-    if a['stoch'] < a['stoch_signal'] and u['stoch'] > u['stoch_signal']: sinal, cor, stochastic_diff = "📈 CALL", "#00ff99", u['stoch']-u['stoch_signal']
-    elif a['stoch'] > a['stoch_signal'] and u['stoch'] < u['stoch_signal']: sinal, cor, stochastic_diff = "📉 PUT", "#ff5555", u['stoch_signal']-u['stoch']
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'], stochastic_diff=stochastic_diff)
-    return sinal, cor, forca_vela, forca_sinal
+    df['stoch_k'] = stoch.stoch(); df['stoch_d'] = stoch.stoch_signal()
+    u, a = df.iloc[-1], df.iloc[-2]; fv = calcular_forca_vela(df)
+    sinal, cor, stoch_diff = "⏳ AGUARDAR", "yellow", 0
+    if a['stoch_k'] < a['stoch_d'] and u['stoch_k'] > u['stoch_d']: sinal, cor, stoch_diff = "📈 CALL", "#00ff99", u['stoch_k']-u['stoch_d']
+    elif a['stoch_k'] > a['stoch_d'] and u['stoch_k'] < u['stoch_d']: sinal, cor, stoch_diff = "📉 PUT", "#ff5555", u['stoch_d']-u['stoch_k']
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], stochastic_diff=stoch_diff, adx=u['adx'])
 
 def estrategia_suporte_resistencia(df):
-    u = df.iloc[-1]; forca_vela = calcular_forca_vela(df)
+    u = df.iloc[-1]; fv = calcular_forca_vela(df)
     N, tolerancia = 20, 0.002
     suporte = df['low'][-N:].min(); resistencia = df['high'][-N:].max()
     sinal, cor, sr_diff = "⏳ AGUARDAR", "yellow", 0
     if abs(u['close'] - suporte)/suporte <= tolerancia: sinal, cor, sr_diff = "📈 CALL", "#00ff99", suporte-u['close']
     elif abs(u['close'] - resistencia)/resistencia <= tolerancia: sinal, cor, sr_diff = "📉 PUT", "#ff5555", u['close']-resistencia
-    forca_sinal = calcular_forca_sinal(sinal, forca_vela, u['rsi'], bb_diff=sr_diff)
-    return sinal, cor, forca_vela, forca_sinal
+    return sinal, cor, fv, calcular_forca_sinal(sinal, fv, u['rsi'], bb_diff=sr_diff, adx=u['adx'])
 
 ESTRATEGIAS = {
+    "Sniper Precisão": estrategia_sniper_pro,
+    "CCI Reversa": estrategia_cci_reversa,
     "RSI + EMA": estrategia_rsi_ema,
     "EMA Trend": estrategia_ema_trend,
     "RSI Extremo": estrategia_rsi_extremo,
@@ -124,9 +145,26 @@ ESTRATEGIAS = {
 
 # ================= FUNÇÕES DE CONTROLE =================
 def aplicar_config():
-    global PAR, TIMEFRAME, EXPIRACAO, ESTRATEGIA
-    PAR = par_var.get(); TIMEFRAME = tf_var.get(); EXPIRACAO = int(exp_var.get()); ESTRATEGIA = est_var.get()
-    status_label.config(text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}", fg="cyan")
+    global PAR, TIMEFRAME, EXPIRACAO, ESTRATEGIA, CONFIG
+    try:
+        PAR = par_var.get()
+        TIMEFRAME = tf_var.get()
+        EXPIRACAO = int(exp_var.get())
+        ESTRATEGIA = est_var.get()
+        
+        # Atualiza o dicionário técnico com os valores da interface
+        CONFIG["RSI_PERIODO"] = int(rsi_p_var.get())
+        CONFIG["EMA_CURTA"] = int(ema_c_var.get())
+        CONFIG["EMA_LONGA"] = int(ema_l_var.get())
+        CONFIG["EMA_TENDENCIA"] = int(ema_t_var.get())
+        CONFIG["ADX_PERIODO"] = int(adx_p_var.get())
+        CONFIG["ADX_MINIMO"] = int(adx_m_var.get())
+        CONFIG["CCI_PERIODO"] = int(cci_p_var.get())
+        CONFIG["CCI_EXTREMO"] = int(cci_e_var.get())
+        
+        status_label.config(text=f"CONFIGURADO: {PAR} | {TIMEFRAME.upper()} | {ESTRATEGIA}", fg="cyan")
+    except Exception as e:
+        status_label.config(text="Erro: Use apenas números inteiros nos indicadores", fg="red")
 
 def parar():
     global rodando
@@ -140,196 +178,159 @@ def iniciar():
         threading.Thread(target=analisar, daemon=True).start()
         sinal_label.config(text="▶ Rodando...", fg="white")
 
-# ================= FUNÇÃO DE ANÁLISE =================
+# ================= MOTOR DE ANÁLISE =================
 def analisar():
     global rodando
+    ultimo_minuto_analisado = -1
     while rodando:
         try:
-            data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
-            if data.empty: 
-                time.sleep(10)
-                continue
+            agora = datetime.now()
+            if agora.second >= 57 or agora.second <= 2:
+                if agora.minute != ultimo_minuto_analisado:
+                    data = yf.download(PAR, period="2d", interval=TIMEFRAME, progress=False)
+                    if not data.empty:
+                        df = data[['Open', 'High', 'Low', 'Close']].copy()
+                        df.columns = ['open', 'high', 'low', 'close']
+                        
+                        # Cálculos usando as variáveis do CONFIG (que são alteradas na UI)
+                        df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
+                        df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
+                        df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
+                        df['ema_trend'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_TENDENCIA"]).ema_indicator()
+                        df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], CONFIG["ADX_PERIODO"]).adx()
+                        df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], CONFIG["CCI_PERIODO"]).cci()
+                        
+                        bb = ta.volatility.BollingerBands(df['close'])
+                        df['bb_high'], df['bb_low'] = bb.bollinger_hband(), bb.bollinger_lband()
+                        
+                        df.dropna(inplace=True)
+                        sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
 
-            df = pd.DataFrame()
-            df['open'], df['high'], df['low'], df['close'] = data['Open'], data['High'], data['Low'], data['Close']
-            df['rsi'] = ta.momentum.RSIIndicator(df['close'], 14).rsi()
-            df['ema9'] = ta.trend.EMAIndicator(df['close'], 9).ema_indicator()
-            df['ema21'] = ta.trend.EMAIndicator(df['close'], 21).ema_indicator()
-            df.dropna(inplace=True)
-
-            if len(df) < 20: 
-                time.sleep(10)
-                continue
-
-            # ====================== ESTRATÉGIA ======================
-            sinal, cor, forca_vela, forca_sinal = ESTRATEGIAS[ESTRATEGIA](df)
-
-            # ====================== TEMPO RESTANTE ======================
-            expiracao_segundos = EXPIRACAO * 60
-            agora_segundos = datetime.now().minute * 60 + datetime.now().second
-            inicio_vela = (agora_segundos // expiracao_segundos) * expiracao_segundos
-            tempo_restante = expiracao_segundos - (agora_segundos - inicio_vela)
-
-            agora = datetime.now().strftime("%H:%M:%S")
-
-            # ====================== ATUALIZA UI ======================
-            root.after(0, atualizar_sinal, sinal, cor, forca_vela, forca_sinal, tempo_restante)
-
-            if sinal != "⏳ AGUARDAR":
-                registro = f"{agora} | {ESTRATEGIA} | {sinal} | Força Sinal: {forca_sinal}%"
-                root.after(0, lambda reg=registro: adicionar_historico(reg))
-
+                        root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
+                        if "AGUARDAR" not in sinal:
+                            winsound.Beep(1000, 500)
+                            registro = f"{agora.strftime('%H:%M:%S')} | {sinal} | Força: {f_s}%"
+                            root.after(0, lambda reg=registro: adicionar_historico(reg))
+                    ultimo_minuto_analisado = agora.minute
+            
+            tempo_reg = 60 - agora.second
+            root.after(0, lambda t=tempo_reg: tempo_label.config(text=f"⏱ Próxima Vela: {t}s"))
+            time.sleep(1)
         except Exception as e:
-            print("Erro:", e)
-
-        time.sleep(15)
-
+            print("Erro:", e); time.sleep(5)
 
 # ================= FUNÇÕES DE UI =================
-def atualizar_sinal(sinal, cor, forca_vela, forca_sinal, tempo_restante):
+def atualizar_sinal(sinal, cor, f_v, f_s):
     sinal_label.config(text=sinal, fg=cor)
-    forca_vela_label.config(text=f"Força Vela: {forca_vela}%", fg="green" if forca_vela>=60 else "yellow" if forca_vela>=30 else "red")
-    forca_sinal_label.config(text=f"Força Sinal: {forca_sinal}%", fg="green" if forca_sinal>=60 else "yellow" if forca_sinal>=30 else "red")
-    tempo_label.config(text=f"⏱ {tempo_restante}s")
+    forca_vela_label.config(text=f"Força Vela: {f_v}%", fg="green" if f_v>=60 else "yellow")
+    forca_sinal_label.config(text=f"Força Sinal: {f_s}%", fg="green" if f_s>=60 else "yellow")
     par_label.config(text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m")
 
 def adicionar_historico(texto):
-    historico_box.insert(END, texto)
-    historico_box.yview_moveto(1)
-    if historico_box.size() > 50: historico_box.delete(0)
+    historico_box.insert(0, texto)
+    if historico_box.size() > 50: historico_box.delete(50)
 
 # ================= INTERFACE =================
 root = Tk()
 root.title("Rafiki Trader PRO")
-root.geometry("650x850")
+root.geometry("650x950")
 root.configure(bg="#0d0d0d")
 
 notebook = ttk.Notebook(root)
 notebook.pack(expand=True, fill="both")
 
-# === ABA TRADER ===
 frame_trader = Frame(notebook, bg="#0d0d0d")
 notebook.add(frame_trader, text="Trader")
 
 Label(frame_trader, text="RAFIKI TRADER PRO", fg="cyan", bg="#0d0d0d", font=("Arial",16,"bold")).pack(pady=10)
-status_label = Label(frame_trader, text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}", fg="white", bg="#0d0d0d")
-status_label.pack(pady=5)
+status_label = Label(frame_trader, text="Configure e clique em Aplicar", fg="white", bg="#0d0d0d")
+status_label.pack()
 
-# Configurações
-Label(frame_trader,text="Par (Yahoo Finance)", fg="white", bg="#0d0d0d").pack()
-par_var = StringVar(value=PAR)
-Entry(frame_trader,textvariable=par_var,width=25).pack()
-Label(frame_trader,text="Timeframe", fg="white", bg="#0d0d0d").pack(pady=5)
-tf_var = StringVar(value=TIMEFRAME)
-ttk.Combobox(frame_trader,textvariable=tf_var,values=TIMEFRAMES_YF,state="readonly", width=22).pack()
-Label(frame_trader,text="Expiração (min)", fg="white", bg="#0d0d0d").pack(pady=5)
-exp_var = StringVar(value=str(EXPIRACAO))
-ttk.Combobox(frame_trader,textvariable=exp_var,values=EXPIRACOES,state="readonly", width=22).pack()
-Label(frame_trader,text="Estratégia", fg="white", bg="#0d0d0d").pack(pady=5)
-est_var = StringVar(value=ESTRATEGIA)
-ttk.Combobox(frame_trader,textvariable=est_var,values=list(ESTRATEGIAS.keys()),state="readonly", width=25).pack()
-Button(frame_trader,text="🔄 Aplicar Configurações", command=aplicar_config,bg="#444",fg="white", width=30).pack(pady=15)
+# --- ABA DE CONFIGURAÇÕES DE ATIVO ---
+f_ativo = LabelFrame(frame_trader, text=" Ativo e Estratégia ", fg="yellow", bg="#0d0d0d", padx=10, pady=10)
+f_ativo.pack(pady=5, fill="x", padx=20)
 
-# Sinal
-frame_sinal = Frame(frame_trader,bg="#0d0d0d")
-frame_sinal.pack(pady=15,fill="x")
-sinal_label = Label(frame_sinal,text="---", fg="white", bg="#0d0d0d", font=("Arial",18,"bold"))
-sinal_label.pack(pady=5)
-frame_detalhes = Frame(frame_sinal,bg="#0d0d0d")
-frame_detalhes.pack(pady=5)
+par_var = StringVar(value=PAR); Entry(f_ativo, textvariable=par_var, width=15).grid(row=0, column=1)
+Label(f_ativo, text="Par:", fg="white", bg="#0d0d0d").grid(row=0, column=0)
 
-forca_vela_label = Label(frame_detalhes,text="Força Vela: 0%", fg="white", bg="#0d0d0d", font=("Arial",12))
-forca_vela_label.grid(row=0,column=0,padx=10)
-forca_sinal_label = Label(frame_detalhes,text="Força Sinal: 0%", fg="white", bg="#0d0d0d", font=("Arial",12))
-forca_sinal_label.grid(row=0,column=1,padx=10)
-tempo_label = Label(frame_detalhes,text="⏱ 0s", fg="white", bg="#0d0d0d", font=("Arial",12))
-tempo_label.grid(row=0,column=2,padx=10)
-par_label = Label(frame_detalhes,text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m", fg="cyan", bg="#0d0d0d", font=("Arial",12))
-par_label.grid(row=0,column=3,padx=10)
+tf_var = StringVar(value=TIMEFRAME); ttk.Combobox(f_ativo, textvariable=tf_var, values=TIMEFRAMES_YF, width=10).grid(row=0, column=3)
+Label(f_ativo, text=" TF:", fg="white", bg="#0d0d0d").grid(row=0, column=2)
 
-# Histórico
-Label(frame_trader,text="Histórico de Sinais", fg="white", bg="#0d0d0d").pack()
-historico_box = Listbox(frame_trader,width=80,height=8,bg="#111",fg="white")
-historico_box.pack(pady=10)
+est_var = StringVar(value=ESTRATEGIA); ttk.Combobox(f_ativo, textvariable=est_var, values=list(ESTRATEGIAS.keys()), width=20).grid(row=1, column=1, pady=5)
+Label(f_ativo, text="Estratégia:", fg="white", bg="#0d0d0d").grid(row=1, column=0)
 
-# Botões
-Button(frame_trader,text="▶ INICIAR", command=iniciar, bg="#00aa88", fg="black", width=25).pack(pady=5)
-Button(frame_trader,text="■ PARAR", command=parar, bg="#aa3333", fg="white", width=25).pack()
+exp_var = StringVar(value="1"); ttk.Combobox(f_ativo, textvariable=exp_var, values=EXPIRACOES, width=5).grid(row=1, column=3)
+Label(f_ativo, text=" Exp:", fg="white", bg="#0d0d0d").grid(row=1, column=2)
 
-# === ABA MAPA DE ESTRATÉGIAS ESTÁTICO ===
+# --- ABA DE CONFIGURAÇÕES DE INDICADORES (NOVO) ---
+f_tecnico = LabelFrame(frame_trader, text=" Ajustes Técnicos dos Indicadores ", fg="cyan", bg="#0d0d0d", padx=10, pady=10)
+f_tecnico.pack(pady=5, fill="x", padx=20)
+
+# Linha 1: RSI e Médias
+rsi_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=rsi_p_var, width=5).grid(row=0, column=1)
+Label(f_tecnico, text="RSI Período:", fg="white", bg="#0d0d0d").grid(row=0, column=0, sticky="w")
+
+ema_c_var = StringVar(value="9"); Entry(f_tecnico, textvariable=ema_c_var, width=5).grid(row=0, column=3)
+Label(f_tecnico, text=" EMA Curta:", fg="white", bg="#0d0d0d").grid(row=0, column=2, sticky="w")
+
+ema_l_var = StringVar(value="21"); Entry(f_tecnico, textvariable=ema_l_var, width=5).grid(row=0, column=5)
+Label(f_tecnico, text=" EMA Longa:", fg="white", bg="#0d0d0d").grid(row=0, column=4, sticky="w")
+
+# Linha 2: ADX e CCI
+adx_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=adx_p_var, width=5).grid(row=1, column=1, pady=5)
+Label(f_tecnico, text="ADX Período:", fg="white", bg="#0d0d0d").grid(row=1, column=0, sticky="w")
+
+adx_m_var = StringVar(value="25"); Entry(f_tecnico, textvariable=adx_m_var, width=5).grid(row=1, column=3)
+Label(f_tecnico, text=" ADX Mínimo:", fg="white", bg="#0d0d0d").grid(row=1, column=2, sticky="w")
+
+ema_t_var = StringVar(value="100"); Entry(f_tecnico, textvariable=ema_t_var, width=5).grid(row=1, column=5)
+Label(f_tecnico, text=" EMA Trend:", fg="white", bg="#0d0d0d").grid(row=1, column=4, sticky="w")
+
+# Linha 3: CCI
+cci_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=cci_p_var, width=5).grid(row=2, column=1)
+Label(f_tecnico, text="CCI Período:", fg="white", bg="#0d0d0d").grid(row=2, column=0, sticky="w")
+
+cci_e_var = StringVar(value="100"); Entry(f_tecnico, textvariable=cci_e_var, width=5).grid(row=2, column=3)
+Label(f_tecnico, text=" CCI Extremo:", fg="white", bg="#0d0d0d").grid(row=2, column=2, sticky="w")
+
+Button(frame_trader, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#444", fg="white", font=("Arial", 10, "bold")).pack(pady=10, fill="x", padx=40)
+
+# --- SINAIS E HISTÓRICO ---
+sinal_label = Label(frame_trader, text="---", fg="white", bg="#0d0d0d", font=("Arial", 22, "bold")); sinal_label.pack()
+f_info = Frame(frame_trader, bg="#0d0d0d")
+f_info.pack(pady=5)
+forca_vela_label = Label(f_info, text="Força Vela: 0%", fg="white", bg="#0d0d0d"); forca_vela_label.grid(row=0, column=0, padx=10)
+forca_sinal_label = Label(f_info, text="Força Sinal: 0%", fg="white", bg="#0d0d0d"); forca_sinal_label.grid(row=0, column=1, padx=10)
+tempo_label = Label(frame_trader, text="⏱ 0s", fg="yellow", bg="#0d0d0d", font=("Arial", 12)); tempo_label.pack()
+par_label = Label(frame_trader, text="---", fg="cyan", bg="#0d0d0d"); par_label.pack()
+
+historico_box = Listbox(frame_trader, width=70, height=6, bg="#111", fg="white"); historico_box.pack(pady=10)
+
+btn_f = Frame(frame_trader, bg="#0d0d0d")
+btn_f.pack()
+Button(btn_f, text="▶ INICIAR", command=iniciar, bg="#00aa88", width=20).grid(row=0, column=0, padx=5)
+Button(btn_f, text="■ PARAR", command=parar, bg="#aa3333", width=20, fg="white").grid(row=0, column=1, padx=5)
+
+# === ABA MAPA DE ESTRATÉGIAS (Sua Aba Original) ===
 frame_mapa = Frame(notebook, bg="#0d0d0d")
 notebook.add(frame_mapa, text="Mapa de Estratégias")
-
-Label(frame_mapa, text="Mapa de Estratégias - Rafiki Trader PRO", fg="cyan", bg="#0d0d0d", font=("Arial",14,"bold")).pack(pady=10)
-
 tabela_frame = Frame(frame_mapa, bg="#0d0d0d")
 tabela_frame.pack(padx=10, pady=10, fill=BOTH, expand=True)
 
-# Cabeçalho
-cabecalho = ["Estratégia", "Como Usar"]
-for col, text in enumerate(cabecalho):
-    Label(
-        tabela_frame, 
-        text=text, 
-        fg="white", 
-        bg="#222", 
-        font=("Arial",12,"bold"), 
-        width=35, 
-        borderwidth=1, 
-        relief="solid"
-    ).grid(row=0, column=col, sticky="nsew")
-
-
-# Linhas da tabela completas
 linhas = [
-    ["RSI + EMA", """Timeframe: 1m-5m | Expiração: 1-3m
-Entrada: CALL se RSI <45 e cruzamento de EMA9 sobre EMA21
-PUT se RSI >55 e EMA9 cruzando abaixo EMA21"""],
-    ["EMA Trend", """Timeframe: 5m-15m | Expiração: 3-5m
-Entrada: Seguir tendência EMA9 vs EMA21
-RSI >45 CALL | RSI <55 PUT"""],
-    ["RSI Extremo", """Timeframe: 1m-5m | Expiração: 1-2m
-Entrada: RSI <=30 CALL | RSI >=70 PUT"""],
-    ["MACD", """Timeframe: 5m | Expiração: 3-5m
-Entrada: Cruzamento MACD acima da linha de sinal CALL
-Cruzamento abaixo PUT"""],
-    ["Confluência PRO", """Timeframe: 1m-5m | Expiração: 1-3m
-Entrada: EMA9 > EMA21 + RSI 40-55 CALL
-EMA9 < EMA21 + RSI 45-60 PUT"""],
-    ["Bollinger Bands", """Timeframe: 1m-5m | Expiração: 1-2m
-Entrada: Preço toca banda inferior CALL
-Preço toca banda superior PUT"""],
-    ["Stochastic", """Timeframe: 1m-5m | Expiração: 1-2m
-Entrada: Cruzamento Stochastic acima linha de sinal CALL
-Cruzamento abaixo PUT"""],
-    ["Suporte/Resistência", """Timeframe: 5m | Expiração: 3-5m
-Entrada: Próximo ao suporte CALL
-Próximo à resistência PUT
-Tolerância: 0.2%"""]
+    ["Sniper Precisão (NOVA)", "Bollinger + RSI + EMA100 + ADX. Reversão técnica com filtro de força."],
+    ["CCI Reversa (NOVA)", "Baseada em exaustão de preço via Commodity Channel Index."],
+    ["RSI + EMA", "Entrada: CALL se RSI <45 e cruzamento EMA9 > EMA21 | PUT se RSI >55 e EMA9 < EMA21"],
+    ["EMA Trend", "Seguir tendência EMA9 vs EMA21 | RSI >45 CALL | RSI <55 PUT"],
+    ["RSI Extremo", "Entrada: RSI <=30 CALL | RSI >=70 PUT"],
+    ["MACD", "Cruzamento MACD acima do sinal CALL | Cruzamento abaixo PUT"],
+    ["Confluência PRO", "EMA9 > EMA21 + RSI 40-55 CALL | EMA9 < EMA21 + RSI 45-60 PUT"],
+    ["Bollinger Bands", "Preço toca banda inferior CALL | Preço toca banda superior PUT"],
+    ["Stochastic", "Cruzamento Stochastic acima do sinal CALL | Cruzamento abaixo PUT"],
+    ["Suporte/Resistência", "Próximo ao suporte CALL | Próximo à resistência PUT"]
 ]
+for r, linha in enumerate(linhas):
+    for c, valor in enumerate(linha):
+        Label(tabela_frame, text=valor, fg="white", bg="#111", borderwidth=1, relief="solid", wraplength=300).grid(row=r, column=c, sticky="nsew")
 
-
-# Inserindo linhas na tabela
-for row_index, linha in enumerate(linhas, start=1):
-    for col_index, valor in enumerate(linha):
-        Label(
-            tabela_frame,
-            text=valor,
-            fg="white",
-            bg="#111",
-            font=("Arial",11),
-            width=35,
-            borderwidth=1,
-            relief="solid",
-            wraplength=300,
-            justify="left"
-        ).grid(row=row_index, column=col_index, sticky="nsew")
-
-# Configura colunas para expandirem
-for i in range(len(cabecalho)):
-    tabela_frame.grid_columnconfigure(i, weight=1)
-
-
-# ================= INICIA A APLICAÇÃO =================
 root.mainloop()
-
