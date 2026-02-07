@@ -69,7 +69,7 @@ Design simples e funcional, priorizando clareza e estabilidade.
 
 ### 1️⃣ Clone o repositório
 ```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git
+git clone https://github.com/Ikifars/bot-trader
 cd seu-repositorio
 python -m pip install pandas ta yfinance
 python bot.py
