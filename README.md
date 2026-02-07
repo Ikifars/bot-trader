@@ -92,11 +92,11 @@ O projeto foi pensado para extensão e refatoração futura.
 ⚠️ Aviso Legal
 
 Este projeto:
-Não garante lucros
-Não executa ordens automaticamente
-Não se conecta diretamente a contas de corretoras
-Não deve ser utilizado como único critério de decisão financeira
-Uso educacional e experimental.
+• Não garante lucros
+• Não executa ordens automaticamente
+• Não se conecta diretamente a contas de corretoras
+• Não deve ser utilizado como único critério de decisão financeira
+• Uso educacional e experimental.
 
 👨‍💻 Autor
 Raphael Victor (Rafiki)
