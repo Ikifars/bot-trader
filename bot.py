@@ -146,24 +146,44 @@ def analisar():
     while rodando:
         try:
             data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
-            if data.empty: time.sleep(10); continue
+            if data.empty: 
+                time.sleep(10)
+                continue
+
             df = pd.DataFrame()
             df['open'], df['high'], df['low'], df['close'] = data['Open'], data['High'], data['Low'], data['Close']
             df['rsi'] = ta.momentum.RSIIndicator(df['close'], 14).rsi()
             df['ema9'] = ta.trend.EMAIndicator(df['close'], 9).ema_indicator()
             df['ema21'] = ta.trend.EMAIndicator(df['close'], 21).ema_indicator()
             df.dropna(inplace=True)
-            if len(df) < 20: time.sleep(10); continue
+
+            if len(df) < 20: 
+                time.sleep(10)
+                continue
+
+            # ====================== ESTRATÉGIA ======================
             sinal, cor, forca_vela, forca_sinal = ESTRATEGIAS[ESTRATEGIA](df)
+
+            # ====================== TEMPO RESTANTE ======================
+            expiracao_segundos = EXPIRACAO * 60
+            agora_segundos = datetime.now().minute * 60 + datetime.now().second
+            inicio_vela = (agora_segundos // expiracao_segundos) * expiracao_segundos
+            tempo_restante = expiracao_segundos - (agora_segundos - inicio_vela)
+
             agora = datetime.now().strftime("%H:%M:%S")
-            tempo_restante = 60 - datetime.now().second
+
+            # ====================== ATUALIZA UI ======================
             root.after(0, atualizar_sinal, sinal, cor, forca_vela, forca_sinal, tempo_restante)
+
             if sinal != "⏳ AGUARDAR":
                 registro = f"{agora} | {ESTRATEGIA} | {sinal} | Força Sinal: {forca_sinal}%"
                 root.after(0, lambda reg=registro: adicionar_historico(reg))
+
         except Exception as e:
             print("Erro:", e)
+
         time.sleep(15)
+
 
 # ================= FUNÇÕES DE UI =================
 def atualizar_sinal(sinal, cor, forca_vela, forca_sinal, tempo_restante):
@@ -312,3 +332,4 @@ for i in range(len(cabecalho)):
 
 # ================= INICIA A APLICAÇÃO =================
 root.mainloop()
+
