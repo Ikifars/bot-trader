@@ -108,16 +108,20 @@ ESTRATEGIAS = {
     "Confluência PRO": estrategia_confluencia
 }
 
-# ================= UI SAFE =================
+# ================= UI =================
 
-def atualizar_sinal(texto, cor):
-    sinal_label.config(text=texto, fg=cor)
+def atualizar_sinal(sinal, cor, forca_vela, forca_sinal, tempo_restante):
+    sinal_label.config(text=sinal, fg=cor)
+    forca_vela_label.config(text=f"Força Vela: {forca_vela}%", fg="green" if forca_vela >= 60 else "yellow" if forca_vela >= 30 else "red")
+    forca_sinal_label.config(text=f"Força Sinal: {forca_sinal}%", fg="green" if forca_sinal >= 60 else "yellow" if forca_sinal >= 30 else "red")
+    tempo_label.config(text=f"⏱ {tempo_restante}s")
+    par_label.config(text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m")
 
 def adicionar_historico(texto):
-    if historico_box.size() >= 50:
-        historico_box.delete(0)
     historico_box.insert(END, texto)
     historico_box.yview_moveto(1)
+    if historico_box.size() > 50:
+        historico_box.delete(0)
 
 # ================= CORE =================
 
@@ -125,12 +129,7 @@ def analisar():
     global rodando
     while rodando:
         try:
-            data = yf.download(
-                tickers=PAR,
-                period="5d",
-                interval=TIMEFRAME,
-                progress=False
-            )
+            data = yf.download(tickers=PAR, period="5d", interval=TIMEFRAME, progress=False)
             if data.empty:
                 time.sleep(10)
                 continue
@@ -149,23 +148,16 @@ def analisar():
                 continue
 
             sinal, cor, forca_vela, forca_sinal = ESTRATEGIAS[ESTRATEGIA](df)
-
             agora = datetime.now().strftime("%H:%M:%S")
             tempo_restante = 60 - datetime.now().second
 
-            texto = (
-                f"{sinal}\n"
-                f"Força da vela: {forca_vela}%\n"
-                f"Força do sinal: {forca_sinal}%\n"
-                f"⏱ Vela: {tempo_restante}s\n"
-                f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m"
-            )
+            # Atualiza UI
+            root.after(0, atualizar_sinal, sinal, cor, forca_vela, forca_sinal, tempo_restante)
 
-            root.after(0, atualizar_sinal, texto, cor)
-
-            if sinal != "⏳ AGUARDAR" and forca_sinal >= 60:
+            # Adiciona histórico para qualquer sinal CALL ou PUT
+            if sinal != "⏳ AGUARDAR":
                 registro = f"{agora} | {ESTRATEGIA} | {sinal} | Força Sinal: {forca_sinal}%"
-                root.after(0, adicionar_historico, registro)
+                root.after(0, lambda reg=registro: adicionar_historico(reg))
 
         except Exception as e:
             print("Erro:", e)
@@ -191,76 +183,58 @@ def aplicar_config():
     TIMEFRAME = tf_var.get()
     EXPIRACAO = int(exp_var.get())
     ESTRATEGIA = est_var.get()
-    status_label.config(
-        text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}",
-        fg="cyan"
-    )
+    status_label.config(text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}", fg="cyan")
 
 # ================= INTERFACE =================
 
 root = Tk()
 root.title("Rafiki Trader PRO")
-root.geometry("520x750")
+root.geometry("520x780")
 root.configure(bg="#0d0d0d")
 
-Label(root, text="RAFIKI TRADER PRO",
-      fg="cyan", bg="#0d0d0d",
-      font=("Arial", 16, "bold")).pack(pady=10)
-
-status_label = Label(root, text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}",
-                     fg="white", bg="#0d0d0d")
+Label(root, text="RAFIKI TRADER PRO", fg="cyan", bg="#0d0d0d", font=("Arial", 16, "bold")).pack(pady=10)
+status_label = Label(root, text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}", fg="white", bg="#0d0d0d")
 status_label.pack(pady=5)
 
 # ===== CONFIGURAÇÕES =====
 Label(root, text="Par (Yahoo Finance)", fg="white", bg="#0d0d0d").pack()
 par_var = StringVar(value=PAR)
 Entry(root, textvariable=par_var, width=25).pack()
-
 Label(root, text="Timeframe", fg="white", bg="#0d0d0d").pack(pady=5)
 tf_var = StringVar(value=TIMEFRAME)
-ttk.Combobox(root, textvariable=tf_var,
-             values=["1m", "5m", "15m"],
-             state="readonly", width=22).pack()
-
+ttk.Combobox(root, textvariable=tf_var, values=["1m", "5m", "15m"], state="readonly", width=22).pack()
 Label(root, text="Expiração (min)", fg="white", bg="#0d0d0d").pack(pady=5)
 exp_var = StringVar(value=str(EXPIRACAO))
-ttk.Combobox(root, textvariable=exp_var,
-             values=["1", "2", "3", "5"],
-             state="readonly", width=22).pack()
-
+ttk.Combobox(root, textvariable=exp_var, values=["1", "2", "3", "5"], state="readonly", width=22).pack()
 Label(root, text="Estratégia", fg="white", bg="#0d0d0d").pack(pady=5)
 est_var = StringVar(value=ESTRATEGIA)
-ttk.Combobox(root, textvariable=est_var,
-             values=list(ESTRATEGIAS.keys()),
-             state="readonly", width=25).pack()
-
-Button(root, text="🔄 Aplicar Configurações",
-       command=aplicar_config,
-       bg="#444", fg="white",
-       width=30).pack(pady=15)
+ttk.Combobox(root, textvariable=est_var, values=list(ESTRATEGIAS.keys()), state="readonly", width=25).pack()
+Button(root, text="🔄 Aplicar Configurações", command=aplicar_config, bg="#444", fg="white", width=30).pack(pady=15)
 
 # ===== SINAL =====
-sinal_label = Label(root, text="---",
-                    fg="white", bg="#0d0d0d",
-                    font=("Arial", 18, "bold"))
-sinal_label.pack(pady=15)
+frame_sinal = Frame(root, bg="#0d0d0d")
+frame_sinal.pack(pady=15, fill="x")
+sinal_label = Label(frame_sinal, text="---", fg="white", bg="#0d0d0d", font=("Arial", 18, "bold"))
+sinal_label.pack(pady=5)
+frame_detalhes = Frame(frame_sinal, bg="#0d0d0d")
+frame_detalhes.pack(pady=5)
+
+forca_vela_label = Label(frame_detalhes, text="Força Vela: 0%", fg="white", bg="#0d0d0d", font=("Arial", 12))
+forca_vela_label.grid(row=0, column=0, padx=10)
+forca_sinal_label = Label(frame_detalhes, text="Força Sinal: 0%", fg="white", bg="#0d0d0d", font=("Arial", 12))
+forca_sinal_label.grid(row=0, column=1, padx=10)
+tempo_label = Label(frame_detalhes, text="⏱ 0s", fg="white", bg="#0d0d0d", font=("Arial", 12))
+tempo_label.grid(row=0, column=2, padx=10)
+par_label = Label(frame_detalhes, text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m", fg="cyan", bg="#0d0d0d", font=("Arial", 12))
+par_label.grid(row=0, column=3, padx=10)
 
 # ===== HISTÓRICO =====
-Label(root, text="Histórico de Sinais",
-      fg="white", bg="#0d0d0d").pack()
-historico_box = Listbox(root, width=55, height=8,
-                        bg="#111", fg="white")
+Label(root, text="Histórico de Sinais", fg="white", bg="#0d0d0d").pack()
+historico_box = Listbox(root, width=80, height=8, bg="#111", fg="white")
 historico_box.pack(pady=10)
 
 # ===== BOTÕES =====
-Button(root, text="▶ INICIAR",
-       command=iniciar,
-       bg="#00aa88", fg="black",
-       width=25).pack(pady=5)
-
-Button(root, text="■ PARAR",
-       command=parar,
-       bg="#aa3333", fg="white",
-       width=25).pack()
+Button(root, text="▶ INICIAR", command=iniciar, bg="#00aa88", fg="black", width=25).pack(pady=5)
+Button(root, text="■ PARAR", command=parar, bg="#aa3333", fg="white", width=25).pack()
 
 root.mainloop()
