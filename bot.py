@@ -17,12 +17,11 @@ ESTRATEGIA = "RSI + EMA"
 # ================= ESTRATÉGIAS =================
 def estrategia_rsi_ema(df):
     u = df.iloc[-1]
-    a = df.iloc[-2]
 
-    if u['rsi'] < 35 and a['ema9'] < a['ema21'] and u['ema9'] > u['ema21']:
+    if u['rsi'] < 35 and u['ema9'] > u['ema21']:
         return "📈 CALL", "#00ff99"
 
-    if u['rsi'] > 65 and a['ema9'] > a['ema21'] and u['ema9'] < u['ema21']:
+    if u['rsi'] > 65 and u['ema9'] < u['ema21']:
         return "📉 PUT", "#ff5555"
 
     return "⏳ AGUARDAR", "yellow"
@@ -31,23 +30,22 @@ def estrategia_rsi_ema(df):
 def estrategia_rsi_puro(df):
     u = df.iloc[-1]
 
-    if u['rsi'] < 30:
+    if u['rsi'] < 35:
         return "📈 CALL", "#00ff99"
 
-    if u['rsi'] > 70:
+    if u['rsi'] > 65:
         return "📉 PUT", "#ff5555"
 
     return "⏳ AGUARDAR", "yellow"
 
 
-def estrategia_ema_cross(df):
+def estrategia_ema(df):
     u = df.iloc[-1]
-    a = df.iloc[-2]
 
-    if a['ema9'] < a['ema21'] and u['ema9'] > u['ema21']:
+    if u['ema9'] > u['ema21']:
         return "📈 CALL", "#00ff99"
 
-    if a['ema9'] > a['ema21'] and u['ema9'] < u['ema21']:
+    if u['ema9'] < u['ema21']:
         return "📉 PUT", "#ff5555"
 
     return "⏳ AGUARDAR", "yellow"
@@ -56,7 +54,7 @@ def estrategia_ema_cross(df):
 ESTRATEGIAS = {
     "RSI + EMA": estrategia_rsi_ema,
     "RSI Extremos": estrategia_rsi_puro,
-    "EMA Cross": estrategia_ema_cross
+    "EMA Tendência": estrategia_ema
 }
 
 # ================= CORE =================
@@ -73,7 +71,7 @@ def analisar():
 
             if data.empty:
                 sinal_label.config(text="⏳ Sem dados", fg="orange")
-                time.sleep(60)
+                time.sleep(30)
                 continue
 
             df = pd.DataFrame()
@@ -119,44 +117,45 @@ def aplicar_config():
     TIMEFRAME = tf_var.get()
     EXPIRACAO = int(exp_var.get())
     ESTRATEGIA = est_var.get()
+
     status_label.config(
-        text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m",
+        text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m | {ESTRATEGIA}",
         fg="cyan"
     )
 
 # ================= INTERFACE =================
 root = Tk()
-root.title("Signal Bot - Configurável")
+root.title("Bot de sinais - Trader")
 root.geometry("460x560")
 root.configure(bg="#0d0d0d")
 
-Label(root, text="SIGNAL BOT PROFISSIONAL",
+Label(root, text="BOT DO RAFIKI",
       fg="cyan", bg="#0d0d0d",
       font=("Arial", 15, "bold")).pack(pady=10)
 
 status_label = Label(root,
-    text="EURUSD | M1 | EXP 1m",
+    text="EURUSD | M1 | EXP 1m | RSI + EMA",
     fg="white", bg="#0d0d0d")
 status_label.pack(pady=5)
 
 # PAR
-Label(root, text="Par", fg="white", bg="#0d0d0d").pack()
+Label(root, text="Par (Yahoo Finance)", fg="white", bg="#0d0d0d").pack()
 par_var = StringVar(value="EURUSD=X")
-Entry(root, textvariable=par_var, width=22).pack()
+Entry(root, textvariable=par_var, width=25).pack()
 
 # TIMEFRAME
 Label(root, text="Timeframe", fg="white", bg="#0d0d0d").pack(pady=5)
 tf_var = StringVar(value="1m")
 ttk.Combobox(root, textvariable=tf_var,
     values=["1m", "5m", "15m"],
-    state="readonly", width=20).pack()
+    state="readonly", width=22).pack()
 
 # EXPIRAÇÃO
 Label(root, text="Expiração (min)", fg="white", bg="#0d0d0d").pack(pady=5)
 exp_var = StringVar(value="1")
 ttk.Combobox(root, textvariable=exp_var,
     values=["1", "2", "3", "5"],
-    state="readonly", width=20).pack()
+    state="readonly", width=22).pack()
 
 # ESTRATÉGIA
 Label(root, text="Estratégia", fg="white", bg="#0d0d0d").pack(pady=5)
@@ -168,7 +167,7 @@ ttk.Combobox(root, textvariable=est_var,
 Button(root, text="🔄 Aplicar Configurações",
        command=aplicar_config,
        bg="#444", fg="white",
-       width=28).pack(pady=12)
+       width=30).pack(pady=15)
 
 sinal_label = Label(root, text="---",
     fg="white", bg="#0d0d0d",
@@ -178,11 +177,11 @@ sinal_label.pack(pady=25)
 Button(root, text="▶ Iniciar",
     command=iniciar,
     bg="#00aa88", fg="black",
-    width=20).pack(pady=5)
+    width=22).pack(pady=5)
 
 Button(root, text="■ Parar",
     command=parar,
     bg="#aa3333", fg="white",
-    width=20).pack()
+    width=22).pack()
 
 root.mainloop()
