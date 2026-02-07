@@ -4,18 +4,70 @@ import pandas as pd
 import ta
 import yfinance as yf
 from tkinter import *
+from tkinter import ttk
 
 rodando = False
-PAR = "EURUSD=X"
 
+# CONFIG PADRÃO
+PAR = "EURUSD=X"
+TIMEFRAME = "1m"
+EXPIRACAO = 1
+ESTRATEGIA = "RSI + EMA"
+
+# ================= ESTRATÉGIAS =================
+def estrategia_rsi_ema(df):
+    u = df.iloc[-1]
+    a = df.iloc[-2]
+
+    if u['rsi'] < 35 and a['ema9'] < a['ema21'] and u['ema9'] > u['ema21']:
+        return "📈 CALL", "#00ff99"
+
+    if u['rsi'] > 65 and a['ema9'] > a['ema21'] and u['ema9'] < u['ema21']:
+        return "📉 PUT", "#ff5555"
+
+    return "⏳ AGUARDAR", "yellow"
+
+
+def estrategia_rsi_puro(df):
+    u = df.iloc[-1]
+
+    if u['rsi'] < 30:
+        return "📈 CALL", "#00ff99"
+
+    if u['rsi'] > 70:
+        return "📉 PUT", "#ff5555"
+
+    return "⏳ AGUARDAR", "yellow"
+
+
+def estrategia_ema_cross(df):
+    u = df.iloc[-1]
+    a = df.iloc[-2]
+
+    if a['ema9'] < a['ema21'] and u['ema9'] > u['ema21']:
+        return "📈 CALL", "#00ff99"
+
+    if a['ema9'] > a['ema21'] and u['ema9'] < u['ema21']:
+        return "📉 PUT", "#ff5555"
+
+    return "⏳ AGUARDAR", "yellow"
+
+
+ESTRATEGIAS = {
+    "RSI + EMA": estrategia_rsi_ema,
+    "RSI Extremos": estrategia_rsi_puro,
+    "EMA Cross": estrategia_ema_cross
+}
+
+# ================= CORE =================
 def analisar():
     global rodando
     while rodando:
         try:
             data = yf.download(
                 tickers=PAR,
-                period="1d",
-                interval="1m",
+                period="2d",
+                interval=TIMEFRAME,
                 progress=False
             )
 
@@ -24,77 +76,113 @@ def analisar():
                 time.sleep(60)
                 continue
 
-            close = data['Close']
-
             df = pd.DataFrame()
-            df['close'] = close
+            df['close'] = data['Close']
             df['rsi'] = ta.momentum.RSIIndicator(df['close'], 14).rsi()
             df['ema9'] = ta.trend.EMAIndicator(df['close'], 9).ema_indicator()
             df['ema21'] = ta.trend.EMAIndicator(df['close'], 21).ema_indicator()
-
-            # REMOVE LINHAS COM NaN
             df.dropna(inplace=True)
 
             if len(df) < 5:
                 sinal_label.config(text="⏳ Calculando...", fg="orange")
-                time.sleep(60)
+                time.sleep(30)
                 continue
 
-            ultima = df.iloc[-1]
-            anterior = df.iloc[-2]
+            sinal, cor = ESTRATEGIAS[ESTRATEGIA](df)
 
-            if ultima['rsi'] < 30 and anterior['ema9'] < anterior['ema21'] and ultima['ema9'] > ultima['ema21']:
-                sinal_label.config(text="📈 CALL", fg="#00ff99")
-
-            elif ultima['rsi'] > 70 and anterior['ema9'] > anterior['ema21'] and ultima['ema9'] < ultima['ema21']:
-                sinal_label.config(text="📉 PUT", fg="#ff5555")
-
-            else:
-                sinal_label.config(text="⏳ AGUARDAR", fg="yellow")
+            info = f"{sinal}\nTF: {TIMEFRAME.upper()} | EXP: {EXPIRACAO}m"
+            sinal_label.config(text=info, fg=cor)
 
         except Exception as e:
-            sinal_label.config(text="⚠ Erro lógico", fg="red")
-            print("Erro real:", e)
+            sinal_label.config(text="⚠ ERRO", fg="red")
+            print("Erro:", e)
 
-        time.sleep(60)
+        time.sleep(EXPIRACAO * 60)
 
-
+# ================= CONTROLES =================
 def iniciar():
     global rodando
-    rodando = True
-    threading.Thread(target=analisar, daemon=True).start()
+    if not rodando:
+        rodando = True
+        threading.Thread(target=analisar, daemon=True).start()
+
 
 def parar():
     global rodando
     rodando = False
     sinal_label.config(text="⏹️ Parado", fg="white")
 
-# ===== INTERFACE =====
+
+def aplicar_config():
+    global PAR, TIMEFRAME, EXPIRACAO, ESTRATEGIA
+    PAR = par_var.get()
+    TIMEFRAME = tf_var.get()
+    EXPIRACAO = int(exp_var.get())
+    ESTRATEGIA = est_var.get()
+    status_label.config(
+        text=f"{PAR} | {TIMEFRAME.upper()} | EXP {EXPIRACAO}m",
+        fg="cyan"
+    )
+
+# ================= INTERFACE =================
 root = Tk()
-root.title("Pocket Option Signal Bot")
-root.geometry("380x260")
+root.title("Signal Bot - Configurável")
+root.geometry("460x560")
 root.configure(bg="#0d0d0d")
 
-Label(root, text="POCKET OPTION SIGNAL BOT",
+Label(root, text="SIGNAL BOT PROFISSIONAL",
       fg="cyan", bg="#0d0d0d",
-      font=("Arial", 14, "bold")).pack(pady=10)
+      font=("Arial", 15, "bold")).pack(pady=10)
 
-Label(root, text="Par: EURUSD | TF: M1",
-      fg="white", bg="#0d0d0d").pack()
+status_label = Label(root,
+    text="EURUSD | M1 | EXP 1m",
+    fg="white", bg="#0d0d0d")
+status_label.pack(pady=5)
+
+# PAR
+Label(root, text="Par", fg="white", bg="#0d0d0d").pack()
+par_var = StringVar(value="EURUSD=X")
+Entry(root, textvariable=par_var, width=22).pack()
+
+# TIMEFRAME
+Label(root, text="Timeframe", fg="white", bg="#0d0d0d").pack(pady=5)
+tf_var = StringVar(value="1m")
+ttk.Combobox(root, textvariable=tf_var,
+    values=["1m", "5m", "15m"],
+    state="readonly", width=20).pack()
+
+# EXPIRAÇÃO
+Label(root, text="Expiração (min)", fg="white", bg="#0d0d0d").pack(pady=5)
+exp_var = StringVar(value="1")
+ttk.Combobox(root, textvariable=exp_var,
+    values=["1", "2", "3", "5"],
+    state="readonly", width=20).pack()
+
+# ESTRATÉGIA
+Label(root, text="Estratégia", fg="white", bg="#0d0d0d").pack(pady=5)
+est_var = StringVar(value="RSI + EMA")
+ttk.Combobox(root, textvariable=est_var,
+    values=list(ESTRATEGIAS.keys()),
+    state="readonly", width=25).pack()
+
+Button(root, text="🔄 Aplicar Configurações",
+       command=aplicar_config,
+       bg="#444", fg="white",
+       width=28).pack(pady=12)
 
 sinal_label = Label(root, text="---",
-                    fg="white", bg="#0d0d0d",
-                    font=("Arial", 22, "bold"))
-sinal_label.pack(pady=30)
+    fg="white", bg="#0d0d0d",
+    font=("Arial", 22, "bold"))
+sinal_label.pack(pady=25)
 
 Button(root, text="▶ Iniciar",
-       command=iniciar,
-       bg="#00aa88", fg="black",
-       width=15).pack(pady=5)
+    command=iniciar,
+    bg="#00aa88", fg="black",
+    width=20).pack(pady=5)
 
 Button(root, text="■ Parar",
-       command=parar,
-       bg="#aa3333", fg="white",
-       width=15).pack()
+    command=parar,
+    bg="#aa3333", fg="white",
+    width=20).pack()
 
 root.mainloop()
