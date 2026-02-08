@@ -215,7 +215,7 @@ def analisar():
                     
                     # --- NOVOS FILTROS (TÓPICO 2) ---
                     t_h1 = verificar_tendencia_macro(PAR)
-                    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
+                    # atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
                     
                     # Filtro de Tendência Global
                     if "CALL" in sinal and t_h1 == "BAIXA":
@@ -223,15 +223,15 @@ def analisar():
                     elif "PUT" in sinal and t_h1 == "ALTA":
                         sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
                     
-                    # Filtro de Volatilidade (ATR Mínimo)
-                    if atr < (df['close'].iloc[-1] * 0.00005):
-                        sinal, cor = "⏳ SEM VOLATILIDADE", "#444"
+                    # # Filtro de Volatilidade (ATR Mínimo)
+                    # if atr < (df['close'].iloc[-1] * 0.00005):
+                    #     sinal, cor = "⏳ SEM VOLATILIDADE", "#444"
 
-                    root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
-                    if "📈" in sinal or "📉" in sinal:
-                        winsound.Beep(1000, 500)
-                        reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
-                        root.after(0, lambda r=reg: adicionar_historico(r))
+                    # root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
+                    # if "📈" in sinal or "📉" in sinal:
+                    #     winsound.Beep(1000, 500)
+                    #     reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
+                    #     root.after(0, lambda r=reg: adicionar_historico(r))
 
             for i in range(30, 0, -1):
                 if not rodando: break
@@ -384,3 +384,4 @@ Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg=
 
 
 root.mainloop()
+
