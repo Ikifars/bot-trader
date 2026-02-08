@@ -12,12 +12,14 @@ import random
 # ================= CONFIGURAÇÕES TÉCNICAS PADRÃO =================
 CONFIG = {
     "RSI_PERIODO": 14,
+    "RSI_UPPER": 70, # Novo
+    "RSI_LOWER": 30, # Novo
     "EMA_CURTA": 9,
     "EMA_LONGA": 21,
     "EMA_TENDENCIA": 100,
     "ADX_PERIODO": 14,
     "ADX_MINIMO": 25,
-    "CCI_PERIODO": 20,
+    "CCI_PERIODO": 20, # Agora ajustável
     "CCI_EXTREMO": 100,
     "BB_PERIODO": 20,
     "BB_DESVIO": 2,
@@ -68,19 +70,19 @@ def medir_confluencia_total(df, sinal_tipo):
     if "AGUARDAR" in sinal_tipo: return 0
     u = df.iloc[-1]
     pontos = 0
-    if u['rsi'] > 70 or u['rsi'] < 30: pontos += 25
+    if u['rsi'] > CONFIG["RSI_UPPER"] or u['rsi'] < CONFIG["RSI_LOWER"]: pontos += 25
     if u['adx'] > CONFIG["ADX_MINIMO"]: pontos += 25
     if u['close'] > u['bb_high'] or u['close'] < u['bb_low']: pontos += 30
     if (u['close'] > u['ema_trend'] and "CALL" in sinal_tipo) or (u['close'] < u['ema_trend'] and "PUT" in sinal_tipo):
         pontos += 20
     return min(pontos, 100)
 
-# ================= ESTRATÉGIAS (MANTIDAS) =================
+# ================= ESTRATÉGIAS (REFERENCIANDO CONFIG) =================
 def estrategia_sniper_pro(df):
     u = df.iloc[-1]; a = df.iloc[-2]
     sinal, cor = "⏳ AGUARDAR", "yellow"
-    call = (u['close'] <= u['bb_low'] and u['rsi'] < 30 and u['adx'] > CONFIG["ADX_MINIMO"] and u['close'] > u['ema_trend'])
-    put = (u['close'] >= u['bb_high'] and u['rsi'] > 70 and u['adx'] > CONFIG["ADX_MINIMO"] and u['close'] < u['ema_trend'])
+    call = (u['close'] <= u['bb_low'] and u['rsi'] < CONFIG["RSI_LOWER"] and u['adx'] > CONFIG["ADX_MINIMO"] and u['close'] > u['ema_trend'])
+    put = (u['close'] >= u['bb_high'] and u['rsi'] > CONFIG["RSI_UPPER"] and u['adx'] > CONFIG["ADX_MINIMO"] and u['close'] < u['ema_trend'])
     if call: sinal, cor = "📈 CALL SNIPER", "#00ff99"
     elif put: sinal, cor = "📉 PUT SNIPER", "#ff5555"
     return sinal, cor, calcular_forca_vela(df), medir_confluencia_total(df, sinal)
@@ -113,8 +115,8 @@ def estrategia_ema_trend(df):
 
 def estrategia_rsi_extremo(df):
     u = df.iloc[-1]; a = df.iloc[-2]; sinal, cor = "⏳ AGUARDAR", "yellow"
-    if u['rsi'] <= 30: sinal, cor = "📈 CALL", "#00ff99"
-    elif u['rsi'] >= 70: sinal, cor = "📉 PUT", "#ff5555"
+    if u['rsi'] <= CONFIG["RSI_LOWER"]: sinal, cor = "📈 CALL", "#00ff99"
+    elif u['rsi'] >= CONFIG["RSI_UPPER"]: sinal, cor = "📉 PUT", "#ff5555"
     return sinal, cor, calcular_forca_vela(df), medir_confluencia_total(df, sinal)
 
 def estrategia_macd(df):
@@ -219,11 +221,14 @@ def aplicar_config():
     try:
         PAR = par_var.get(); TIMEFRAME = tf_var.get(); EXPIRACAO = int(exp_var.get()); ESTRATEGIA = est_var.get()
         CONFIG["RSI_PERIODO"] = int(rsi_p_var.get())
+        CONFIG["RSI_UPPER"] = int(rsi_u_var.get())
+        CONFIG["RSI_LOWER"] = int(rsi_l_var.get())
         CONFIG["EMA_CURTA"] = int(ema_c_var.get())
         CONFIG["EMA_LONGA"] = int(ema_l_var.get())
         CONFIG["EMA_TENDENCIA"] = int(ema_t_var.get())
         CONFIG["ADX_PERIODO"] = int(adx_p_var.get())
         CONFIG["ADX_MINIMO"] = int(adx_m_var.get())
+        CONFIG["CCI_PERIODO"] = int(cci_p_var.get()) # Aplicando CCI Per
         CONFIG["CCI_EXTREMO"] = int(cci_e_var.get())
         CONFIG["BB_PERIODO"] = int(bb_p_var.get())
         CONFIG["BB_DESVIO"] = float(bb_d_var.get())
@@ -263,7 +268,7 @@ def adicionar_historico(texto):
 # ================= INTERFACE OTIMIZADA =================
 root = Tk()
 root.title("Rafiki Trader PRO")
-root.geometry("600x600") # Reduzido para caber na tela
+root.geometry("620x650") 
 root.configure(bg="#0d0d0d")
 
 news_frame = Frame(root, bg="#222", height=30)
@@ -287,41 +292,47 @@ Label(f_ativo, text=" Estratégia:", fg="white", bg="#0d0d0d").grid(row=0, colum
 exp_var = StringVar(value="1"); ttk.Combobox(f_ativo, textvariable=exp_var, values=EXPIRACOES, width=3).grid(row=0, column=7)
 Label(f_ativo, text=" Exp:", fg="white", bg="#0d0d0d").grid(row=0, column=6)
 
-# --- AJUSTES TÉCNICOS (3 COLUNAS PARA ECONOMIZAR ESPAÇO) ---
+# --- AJUSTES TÉCNICOS (3 COLUNAS) ---
 f_tecnico = LabelFrame(root, text=" Painel Técnico ", fg="cyan", bg="#0d0d0d", padx=5, pady=5)
 f_tecnico.pack(pady=2, fill="x", padx=10)
 
 # Coluna 1
 rsi_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=rsi_p_var, width=5).grid(row=0, column=1)
 Label(f_tecnico, text="RSI Per:", fg="white", bg="#0d0d0d").grid(row=0, column=0, sticky="e")
-adx_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=adx_p_var, width=5).grid(row=1, column=1)
-Label(f_tecnico, text="ADX Per:", fg="white", bg="#0d0d0d").grid(row=1, column=0, sticky="e")
-bb_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=bb_p_var, width=5).grid(row=2, column=1)
-Label(f_tecnico, text="BB Per:", fg="white", bg="#0d0d0d").grid(row=2, column=0, sticky="e")
-mc_f_var = StringVar(value="12"); Entry(f_tecnico, textvariable=mc_f_var, width=5).grid(row=3, column=1)
-Label(f_tecnico, text="MACD F:", fg="white", bg="#0d0d0d").grid(row=3, column=0, sticky="e")
+rsi_u_var = StringVar(value="70"); Entry(f_tecnico, textvariable=rsi_u_var, width=5).grid(row=1, column=1)
+Label(f_tecnico, text="RSI Up:", fg="white", bg="#0d0d0d").grid(row=1, column=0, sticky="e")
+rsi_l_var = StringVar(value="30"); Entry(f_tecnico, textvariable=rsi_l_var, width=5).grid(row=2, column=1)
+Label(f_tecnico, text="RSI Low:", fg="white", bg="#0d0d0d").grid(row=2, column=0, sticky="e")
+adx_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=adx_p_var, width=5).grid(row=3, column=1)
+Label(f_tecnico, text="ADX Per:", fg="white", bg="#0d0d0d").grid(row=3, column=0, sticky="e")
+mc_f_var = StringVar(value="12"); Entry(f_tecnico, textvariable=mc_f_var, width=5).grid(row=4, column=1)
+Label(f_tecnico, text="MACD F:", fg="white", bg="#0d0d0d").grid(row=4, column=0, sticky="e")
 
 # Coluna 2
 ema_c_var = StringVar(value="9"); Entry(f_tecnico, textvariable=ema_c_var, width=5).grid(row=0, column=3)
 Label(f_tecnico, text=" EMA Curta:", fg="white", bg="#0d0d0d").grid(row=0, column=2, sticky="e")
-adx_m_var = StringVar(value="25"); Entry(f_tecnico, textvariable=adx_m_var, width=5).grid(row=1, column=3)
-Label(f_tecnico, text=" ADX Mín:", fg="white", bg="#0d0d0d").grid(row=1, column=2, sticky="e")
-bb_d_var = StringVar(value="2"); Entry(f_tecnico, textvariable=bb_d_var, width=5).grid(row=2, column=3)
-Label(f_tecnico, text=" BB Desv:", fg="white", bg="#0d0d0d").grid(row=2, column=2, sticky="e")
-mc_s_var = StringVar(value="26"); Entry(f_tecnico, textvariable=mc_s_var, width=5).grid(row=3, column=3)
-Label(f_tecnico, text=" MACD S:", fg="white", bg="#0d0d0d").grid(row=3, column=2, sticky="e")
+ema_l_var = StringVar(value="21"); Entry(f_tecnico, textvariable=ema_l_var, width=5).grid(row=1, column=3)
+Label(f_tecnico, text=" EMA Longa:", fg="white", bg="#0d0d0d").grid(row=1, column=2, sticky="e")
+ema_t_var = StringVar(value="100"); Entry(f_tecnico, textvariable=ema_t_var, width=5).grid(row=2, column=3)
+Label(f_tecnico, text=" EMA Trend:", fg="white", bg="#0d0d0d").grid(row=2, column=2, sticky="e")
+adx_m_var = StringVar(value="25"); Entry(f_tecnico, textvariable=adx_m_var, width=5).grid(row=3, column=3)
+Label(f_tecnico, text=" ADX Mín:", fg="white", bg="#0d0d0d").grid(row=3, column=2, sticky="e")
+mc_s_var = StringVar(value="26"); Entry(f_tecnico, textvariable=mc_s_var, width=5).grid(row=4, column=3)
+Label(f_tecnico, text=" MACD S:", fg="white", bg="#0d0d0d").grid(row=4, column=2, sticky="e")
 
 # Coluna 3
-ema_l_var = StringVar(value="21"); Entry(f_tecnico, textvariable=ema_l_var, width=5).grid(row=0, column=5)
-Label(f_tecnico, text=" EMA Longa:", fg="white", bg="#0d0d0d").grid(row=0, column=4, sticky="e")
-ema_t_var = StringVar(value="100"); Entry(f_tecnico, textvariable=ema_t_var, width=5).grid(row=1, column=5)
-Label(f_tecnico, text=" EMA Trend:", fg="white", bg="#0d0d0d").grid(row=1, column=4, sticky="e")
-cci_e_var = StringVar(value="100"); Entry(f_tecnico, textvariable=cci_e_var, width=5).grid(row=2, column=5)
-Label(f_tecnico, text=" CCI Extr:", fg="white", bg="#0d0d0d").grid(row=2, column=4, sticky="e")
+cci_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=cci_p_var, width=5).grid(row=0, column=5) # NOVO
+Label(f_tecnico, text=" CCI Per:", fg="white", bg="#0d0d0d").grid(row=0, column=4, sticky="e")
+cci_e_var = StringVar(value="100"); Entry(f_tecnico, textvariable=cci_e_var, width=5).grid(row=1, column=5)
+Label(f_tecnico, text=" CCI Extr:", fg="white", bg="#0d0d0d").grid(row=1, column=4, sticky="e")
+bb_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=bb_p_var, width=5).grid(row=2, column=5)
+Label(f_tecnico, text=" BB Per:", fg="white", bg="#0d0d0d").grid(row=2, column=4, sticky="e")
+bb_d_var = StringVar(value="2"); Entry(f_tecnico, textvariable=bb_d_var, width=5).grid(row=3, column=5)
+Label(f_tecnico, text=" BB Desv:", fg="white", bg="#0d0d0d").grid(row=3, column=4, sticky="e")
 st_k_var = StringVar(value="14"); st_d_var = StringVar(value="3")
-Entry(f_tecnico, textvariable=st_k_var, width=2).grid(row=3, column=5, sticky="w")
-Entry(f_tecnico, textvariable=st_d_var, width=2).grid(row=3, column=5, sticky="e")
-Label(f_tecnico, text=" Stoch K/D:", fg="white", bg="#0d0d0d").grid(row=3, column=4, sticky="e")
+Entry(f_tecnico, textvariable=st_k_var, width=2).grid(row=4, column=5, sticky="w")
+Entry(f_tecnico, textvariable=st_d_var, width=2).grid(row=4, column=5, sticky="e")
+Label(f_tecnico, text=" Stoch K/D:", fg="white", bg="#0d0d0d").grid(row=4, column=4, sticky="e")
 
 Button(root, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#333", fg="white", font=("Arial", 9, "bold")).pack(pady=5, fill="x", padx=50)
 
@@ -338,7 +349,7 @@ par_label = Label(root, text="---", fg="cyan", bg="#0d0d0d", font=("Arial", 9));
 historico_box = Listbox(root, width=65, height=5, bg="#111", fg="white", font=("Consolas", 9)); historico_box.pack(pady=5)
 Button(root, text="LIMPAR LOG", command=limpar_historico, bg="#222", fg="#888", font=("Arial", 7)).pack()
 
-# --- CONTROLES (AGORA VISÍVEIS) ---
+# --- CONTROLES ---
 btn_f = Frame(root, bg="#0d0d0d")
 btn_f.pack(pady=10)
 Button(btn_f, text="▶ INICIAR MOTOR", command=iniciar, bg="#00aa88", width=18, font=("Arial", 11, "bold")).grid(row=0, column=0, padx=10)
