@@ -292,12 +292,12 @@ def analisar():
                     #     reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
                     #     root.after(0, lambda r=reg: adicionar_historico(r))
 
-            for i in range(30, 0, -1):
-                if not rodando: break
-                root.after(0, lambda t=i: tempo_label.config(text=f"⏱ Próxima Análise: {t}s"))
-                time.sleep(1)
-        except Exception as e:
-            print(f"Erro: {e}"); time.sleep(5)
+        #     for i in range(30, 0, -1):
+        #         if not rodando: break
+        #         root.after(0, lambda t=i: tempo_label.config(text=f"⏱ Próxima Análise: {t}s"))
+        #         time.sleep(1)
+        # except Exception as e:
+        #     print(f"Erro: {e}"); time.sleep(5)
 
 # ================= FUNÇÕES DE CONTROLE =================
 # def registrar_resultado(tipo):
@@ -443,5 +443,6 @@ Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg=
 
 
 root.mainloop()
+
 
 
