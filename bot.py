@@ -12,14 +12,14 @@ import random
 # ================= CONFIGURAÇÕES TÉCNICAS PADRÃO =================
 CONFIG = {
     "RSI_PERIODO": 14,
-    "RSI_UPPER": 70, # Novo
-    "RSI_LOWER": 30, # Novo
+    "RSI_UPPER": 70,
+    "RSI_LOWER": 30,
     "EMA_CURTA": 9,
     "EMA_LONGA": 21,
     "EMA_TENDENCIA": 100,
     "ADX_PERIODO": 14,
     "ADX_MINIMO": 25,
-    "CCI_PERIODO": 20, # Agora ajustável
+    "CCI_PERIODO": 20,
     "CCI_EXTREMO": 100,
     "BB_PERIODO": 20,
     "BB_DESVIO": 2,
@@ -34,6 +34,7 @@ PAR = "EURUSD=X"
 TIMEFRAME = "1m"
 EXPIRACAO = 1
 ESTRATEGIA = "RSI + EMA"
+PLACAR = {"WIN": 0, "LOSS": 0} # Novo: Controle de Placar
 
 TIMEFRAMES_YF = ["1m","2m","5m","15m","30m","60m","90m","1d","5d","1wk","1mo"]
 EXPIRACOES = list(range(1,31))
@@ -45,7 +46,7 @@ def verificar_status_mercado():
         return "⚠️ ALTA VOLATILIDADE (Notícias Próximas)", "#ffaa00"
     return "✅ MERCADO ESTÁVEL (Técnico Respeitando)", "#00ff00"
 
-# ================= NOVO: DETECÇÃO DE PREÇO H1 =================
+# ================= NOVO: DETECÇÃO DE PREÇO H1 E TENDÊNCIA =================
 def detectar_niveis_h1(par):
     try:
         data_h1 = yf.download(par, period="5d", interval="60m", progress=False)
@@ -55,6 +56,15 @@ def detectar_niveis_h1(par):
         suportes = data_h1['low'].nsmallest(5).tolist()
         return suportes, resistencias
     except: return [], []
+
+def verificar_tendencia_macro(par):
+    try:
+        data_h1 = yf.download(par, period="5d", interval="60m", progress=False)
+        data_h1.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in data_h1.columns]
+        ema_macro = ta.trend.EMAIndicator(data_h1['close'], window=100).ema_indicator()
+        if data_h1['close'].iloc[-1] > ema_macro.iloc[-1]: return "ALTA"
+        return "BAIXA"
+    except: return "INDEFINIDA"
 
 # ================= UTILIDADES DE CONFLUÊNCIA =================
 def calcular_forca_vela(df):
@@ -77,7 +87,7 @@ def medir_confluencia_total(df, sinal_tipo):
         pontos += 20
     return min(pontos, 100)
 
-# ================= ESTRATÉGIAS (REFERENCIANDO CONFIG) =================
+# ================= ESTRATÉGIAS =================
 def estrategia_sniper_pro(df):
     u = df.iloc[-1]; a = df.iloc[-2]
     sinal, cor = "⏳ AGUARDAR", "yellow"
@@ -180,12 +190,12 @@ def analisar():
         try:
             txt_nws, cor_nws = verificar_status_mercado()
             root.after(0, lambda: news_label.config(text=txt_nws, fg=cor_nws))
-            
+
             data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
             if data is not None and not data.empty:
                 df = data.copy()
                 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
-                
+
                 df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
                 df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
                 df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
@@ -198,16 +208,31 @@ def analisar():
                 df['stoch_k'], df['stoch_d'] = stoch.stoch(), stoch.stoch_signal()
                 macd = ta.trend.MACD(df['close'], window_fast=CONFIG["MACD_FAST"], window_slow=CONFIG["MACD_SLOW"])
                 df['macd_val'], df['macd_signal'] = macd.macd(), macd.macd_signal()
-                
+
                 df.dropna(inplace=True)
                 if not df.empty:
                     sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
+                    
+                    # --- NOVOS FILTROS (TÓPICO 2) ---
+                    t_h1 = verificar_tendencia_macro(PAR)
+                    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
+                    
+                    # Filtro de Tendência Global
+                    if "CALL" in sinal and t_h1 == "BAIXA":
+                        sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
+                    elif "PUT" in sinal and t_h1 == "ALTA":
+                        sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
+                    
+                    # Filtro de Volatilidade (ATR Mínimo)
+                    if atr < (df['close'].iloc[-1] * 0.00005):
+                        sinal, cor = "⏳ SEM VOLATILIDADE", "#444"
+
                     root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
-                    if "AGUARDAR" not in sinal:
+                    if "📈" in sinal or "📉" in sinal:
                         winsound.Beep(1000, 500)
-                        reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Força: {f_s}%"
+                        reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
                         root.after(0, lambda r=reg: adicionar_historico(r))
-            
+
             for i in range(30, 0, -1):
                 if not rodando: break
                 root.after(0, lambda t=i: tempo_label.config(text=f"⏱ Próxima Análise: {t}s"))
@@ -216,26 +241,24 @@ def analisar():
             print(f"Erro: {e}"); time.sleep(5)
 
 # ================= FUNÇÕES DE CONTROLE =================
+# def registrar_resultado(tipo):
+#     global PLACAR
+#     PLACAR[tipo] += 1
+#     total = PLACAR["WIN"] + PLACAR["LOSS"]
+#     wr = (PLACAR["WIN"] / total * 100) if total > 0 else 0
+#     placar_label.config(text=f"🏆 WIN: {PLACAR['WIN']} | ❌ LOSS: {PLACAR['LOSS']} ({wr:.1f}%)")
+
 def aplicar_config():
     global PAR, TIMEFRAME, EXPIRACAO, ESTRATEGIA, CONFIG
     try:
         PAR = par_var.get(); TIMEFRAME = tf_var.get(); EXPIRACAO = int(exp_var.get()); ESTRATEGIA = est_var.get()
-        CONFIG["RSI_PERIODO"] = int(rsi_p_var.get())
-        CONFIG["RSI_UPPER"] = int(rsi_u_var.get())
-        CONFIG["RSI_LOWER"] = int(rsi_l_var.get())
-        CONFIG["EMA_CURTA"] = int(ema_c_var.get())
-        CONFIG["EMA_LONGA"] = int(ema_l_var.get())
-        CONFIG["EMA_TENDENCIA"] = int(ema_t_var.get())
-        CONFIG["ADX_PERIODO"] = int(adx_p_var.get())
-        CONFIG["ADX_MINIMO"] = int(adx_m_var.get())
-        CONFIG["CCI_PERIODO"] = int(cci_p_var.get()) # Aplicando CCI Per
-        CONFIG["CCI_EXTREMO"] = int(cci_e_var.get())
-        CONFIG["BB_PERIODO"] = int(bb_p_var.get())
-        CONFIG["BB_DESVIO"] = float(bb_d_var.get())
-        CONFIG["STOCH_K"] = int(st_k_var.get())
-        CONFIG["STOCH_D"] = int(st_d_var.get())
-        CONFIG["MACD_FAST"] = int(mc_f_var.get())
-        CONFIG["MACD_SLOW"] = int(mc_s_var.get())
+        CONFIG["RSI_PERIODO"] = int(rsi_p_var.get()); CONFIG["RSI_UPPER"] = int(rsi_u_var.get()); CONFIG["RSI_LOWER"] = int(rsi_l_var.get())
+        CONFIG["EMA_CURTA"] = int(ema_c_var.get()); CONFIG["EMA_LONGA"] = int(ema_l_var.get()); CONFIG["EMA_TENDENCIA"] = int(ema_t_var.get())
+        CONFIG["ADX_PERIODO"] = int(adx_p_var.get()); CONFIG["ADX_MINIMO"] = int(adx_m_var.get())
+        CONFIG["CCI_PERIODO"] = int(cci_p_var.get()); CONFIG["CCI_EXTREMO"] = int(cci_e_var.get())
+        CONFIG["BB_PERIODO"] = int(bb_p_var.get()); CONFIG["BB_DESVIO"] = float(bb_d_var.get())
+        CONFIG["STOCH_K"] = int(st_k_var.get()); CONFIG["STOCH_D"] = int(st_d_var.get())
+        CONFIG["MACD_FAST"] = int(mc_f_var.get()); CONFIG["MACD_SLOW"] = int(mc_s_var.get())
         status_label.config(text=f"✅ SISTEMA CALIBRADO", fg="cyan")
     except Exception as e:
         status_label.config(text=f"Erro: {e}", fg="red")
@@ -268,7 +291,7 @@ def adicionar_historico(texto):
 # ================= INTERFACE OTIMIZADA =================
 root = Tk()
 root.title("Rafiki Trader PRO")
-root.geometry("620x650") 
+root.geometry("600x650") 
 root.configure(bg="#0d0d0d")
 
 news_frame = Frame(root, bg="#222", height=30)
@@ -280,7 +303,7 @@ Label(root, text="RAFIKI TRADER ENGINE", fg="cyan", bg="#0d0d0d", font=("Arial",
 status_label = Label(root, text="Calibre e inicie", fg="white", bg="#0d0d0d", font=("Arial", 9))
 status_label.pack()
 
-# --- ATIVOS (COMPACTO) ---
+# --- ATIVOS ---
 f_ativo = LabelFrame(root, text=" Configuração ", fg="yellow", bg="#0d0d0d", padx=5, pady=5)
 f_ativo.pack(pady=2, fill="x", padx=10)
 par_var = StringVar(value=PAR); Entry(f_ativo, textvariable=par_var, width=10).grid(row=0, column=1)
@@ -292,11 +315,9 @@ Label(f_ativo, text=" Estratégia:", fg="white", bg="#0d0d0d").grid(row=0, colum
 exp_var = StringVar(value="1"); ttk.Combobox(f_ativo, textvariable=exp_var, values=EXPIRACOES, width=3).grid(row=0, column=7)
 Label(f_ativo, text=" Exp:", fg="white", bg="#0d0d0d").grid(row=0, column=6)
 
-# --- AJUSTES TÉCNICOS (3 COLUNAS) ---
+# --- AJUSTES TÉCNICOS ---
 f_tecnico = LabelFrame(root, text=" Painel Técnico ", fg="cyan", bg="#0d0d0d", padx=5, pady=5)
 f_tecnico.pack(pady=2, fill="x", padx=10)
-
-# Coluna 1
 rsi_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=rsi_p_var, width=5).grid(row=0, column=1)
 Label(f_tecnico, text="RSI Per:", fg="white", bg="#0d0d0d").grid(row=0, column=0, sticky="e")
 rsi_u_var = StringVar(value="70"); Entry(f_tecnico, textvariable=rsi_u_var, width=5).grid(row=1, column=1)
@@ -307,8 +328,6 @@ adx_p_var = StringVar(value="14"); Entry(f_tecnico, textvariable=adx_p_var, widt
 Label(f_tecnico, text="ADX Per:", fg="white", bg="#0d0d0d").grid(row=3, column=0, sticky="e")
 mc_f_var = StringVar(value="12"); Entry(f_tecnico, textvariable=mc_f_var, width=5).grid(row=4, column=1)
 Label(f_tecnico, text="MACD F:", fg="white", bg="#0d0d0d").grid(row=4, column=0, sticky="e")
-
-# Coluna 2
 ema_c_var = StringVar(value="9"); Entry(f_tecnico, textvariable=ema_c_var, width=5).grid(row=0, column=3)
 Label(f_tecnico, text=" EMA Curta:", fg="white", bg="#0d0d0d").grid(row=0, column=2, sticky="e")
 ema_l_var = StringVar(value="21"); Entry(f_tecnico, textvariable=ema_l_var, width=5).grid(row=1, column=3)
@@ -319,9 +338,7 @@ adx_m_var = StringVar(value="25"); Entry(f_tecnico, textvariable=adx_m_var, widt
 Label(f_tecnico, text=" ADX Mín:", fg="white", bg="#0d0d0d").grid(row=3, column=2, sticky="e")
 mc_s_var = StringVar(value="26"); Entry(f_tecnico, textvariable=mc_s_var, width=5).grid(row=4, column=3)
 Label(f_tecnico, text=" MACD S:", fg="white", bg="#0d0d0d").grid(row=4, column=2, sticky="e")
-
-# Coluna 3
-cci_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=cci_p_var, width=5).grid(row=0, column=5) # NOVO
+cci_p_var = StringVar(value="20"); Entry(f_tecnico, textvariable=cci_p_var, width=5).grid(row=0, column=5)
 Label(f_tecnico, text=" CCI Per:", fg="white", bg="#0d0d0d").grid(row=0, column=4, sticky="e")
 cci_e_var = StringVar(value="100"); Entry(f_tecnico, textvariable=cci_e_var, width=5).grid(row=1, column=5)
 Label(f_tecnico, text=" CCI Extr:", fg="white", bg="#0d0d0d").grid(row=1, column=4, sticky="e")
@@ -335,6 +352,16 @@ Entry(f_tecnico, textvariable=st_d_var, width=2).grid(row=4, column=5, sticky="e
 Label(f_tecnico, text=" Stoch K/D:", fg="white", bg="#0d0d0d").grid(row=4, column=4, sticky="e")
 
 Button(root, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#333", fg="white", font=("Arial", 9, "bold")).pack(pady=5, fill="x", padx=50)
+
+# --- NOVO: PAINEL DE PLACAR (TÓPICO 4) ---
+# f_placar = Frame(root, bg="#111", pady=5)
+# f_placar.pack(fill="x", padx=10, pady=5)
+# placar_label = Label(f_placar, text="🏆 WIN: 0 | ❌ LOSS: 0 (0.0%)", fg="white", bg="#111", font=("Arial", 10, "bold"))
+# placar_label.pack()
+# btn_placar_f = Frame(f_placar, bg="#111")
+# btn_placar_f.pack()
+# Button(btn_placar_f, text="✅ WIN", command=lambda: registrar_resultado("WIN"), bg="#005500", fg="white", width=10).grid(row=0, column=0, padx=5)
+# Button(btn_placar_f, text="❌ LOSS", command=lambda: registrar_resultado("LOSS"), bg="#550000", fg="white", width=10).grid(row=0, column=1, padx=5)
 
 # --- RESULTADOS ---
 sinal_label = Label(root, text="---", fg="white", bg="#0d0d0d", font=("Arial", 26, "bold")); sinal_label.pack()
@@ -354,5 +381,6 @@ btn_f = Frame(root, bg="#0d0d0d")
 btn_f.pack(pady=10)
 Button(btn_f, text="▶ INICIAR MOTOR", command=iniciar, bg="#00aa88", width=18, font=("Arial", 11, "bold")).grid(row=0, column=0, padx=10)
 Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg="white", font=("Arial", 11, "bold")).grid(row=0, column=1, padx=10)
+
 
 root.mainloop()
