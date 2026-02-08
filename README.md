@@ -45,3 +45,37 @@ Certifique-se de ter o Python 3.8+ instalado.
 Execute o comando abaixo no seu terminal:
 ```bash
 pip install pandas ta yfinance
+````
+## 🚀 Como Iniciar
+Abra o Terminal na pasta do projeto.
+
+Execute o Software:
+
+`````bash
+python nome_do_seu_arquivo.py
+``````
+
+## Calibre o Ativo: Insira o par no padrão Yahoo Finance (ex: EURUSD=X ou BTC-USD).
+
+Aplique as Configurações: Clique em 🔄 APLICAR TUDO antes de iniciar.
+
+Dê o Play: Clique em ▶ INICIAR MOTOR.
+
+## 🛠️ Estrutura Técnica (Painel)
+O painel foi desenhado para ser intuitivo mesmo com alta densidade de informações:
+
+Coluna 1: Foco em RSI e Momentum.
+
+Coluna 2: Foco em Médias Móveis e Tendência.
+
+Coluna 3: Foco em Volatilidade (Bollinger) e Exaustão (CCI/Stoch).
+
+
+## ⚠️ Aviso Legal (Disclaimer)
+ESTE SOFTWARE É PARA FINS DIDÁTICOS E ANALÍTICOS.
+O trading envolve risco de perda de capital. O desenvolvedor não se responsabiliza por perdas financeiras decorrentes do uso desta ferramenta. Sempre teste suas estratégias em conta de demonstração.
+
+
+<p align="center">
+Desenvolvido com ❤️ por <strong>Rafiki Trader</strong>
+</p>
