@@ -34,6 +34,7 @@ PAR = "EURUSD=X"
 TIMEFRAME = "1m"
 EXPIRACAO = 1
 ESTRATEGIA = "RSI + EMA"
+ultima_vela_analisada = None  # Nova variável para evitar spam
 PLACAR = {"WIN": 0, "LOSS": 0} # Novo: Controle de Placar
 
 TIMEFRAMES_YF = ["1m","2m","5m","15m","30m","60m","90m","1d","5d","1wk","1mo"]
@@ -185,17 +186,21 @@ ESTRATEGIAS = {
 
 # ================= MOTOR DE ANÁLISE =================
 def analisar():
-    global rodando
+    global rodando, ultima_vela_analisada # Adicionada a global aqui
     while rodando:
         try:
             txt_nws, cor_nws = verificar_status_mercado()
             root.after(0, lambda: news_label.config(text=txt_nws, fg=cor_nws))
 
-            data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
+            data = yf.download(PAR, period="2d", interval=TIMEFRAME, progress=False)
             if data is not None and not data.empty:
                 df = data.copy()
                 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
+                
+                # Identifica o horário de abertura da vela atual
+                timestamp_atual = df.index[-1]
 
+                # --- CÁLCULOS TÉCNICOS ---
                 df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
                 df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
                 df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
@@ -213,15 +218,69 @@ def analisar():
                 if not df.empty:
                     sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
                     
-                    # --- NOVOS FILTROS (TÓPICO 2) ---
+                    # Filtros de Tendência Macro H1
                     t_h1 = verificar_tendencia_macro(PAR)
-                    # atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
-                    
-                    # Filtro de Tendência Global
                     if "CALL" in sinal and t_h1 == "BAIXA":
                         sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
                     elif "PUT" in sinal and t_h1 == "ALTA":
                         sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
+
+                    # Atualiza a interface (Sempre)
+                    root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
+                    
+                    # --- LÓGICA DE ALERTA SEM SPAM ---
+                    # Só apita e loga se for sinal de compra/venda E se ainda não avisou NESTA vela
+                    if ("📈" in sinal or "📉" in sinal) and timestamp_atual != ultima_vela_analisada:
+                        ultima_vela_analisada = timestamp_atual
+                        winsound.Beep(1000, 500) 
+                        reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
+                        root.after(0, lambda r=reg: adicionar_historico(r))
+
+            # Tempo reduzido para 10 segundos
+            for i in range(10, 0, -1):
+                if not rodando: break
+                root.after(0, lambda t=i: tempo_label.config(text=f"⏱ Próxima Varredura: {t}s"))
+                time.sleep(1)
+        except Exception as e:
+            print(f"Erro: {e}"); time.sleep(5)
+# def analisar():
+#     global rodando
+#     while rodando:
+#         try:
+#             txt_nws, cor_nws = verificar_status_mercado()
+#             root.after(0, lambda: news_label.config(text=txt_nws, fg=cor_nws))
+
+#             data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
+#             if data is not None and not data.empty:
+#                 df = data.copy()
+#                 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
+
+#                 df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
+#                 df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
+#                 df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
+#                 df['ema_trend'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_TENDENCIA"]).ema_indicator()
+#                 df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], CONFIG["ADX_PERIODO"]).adx()
+#                 df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], CONFIG["CCI_PERIODO"]).cci()
+#                 bb = ta.volatility.BollingerBands(df['close'], window=CONFIG["BB_PERIODO"], window_dev=CONFIG["BB_DESVIO"])
+#                 df['bb_high'], df['bb_low'] = bb.bollinger_hband(), bb.bollinger_lband()
+#                 stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=CONFIG["STOCH_K"], smooth_window=CONFIG["STOCH_D"])
+#                 df['stoch_k'], df['stoch_d'] = stoch.stoch(), stoch.stoch_signal()
+#                 macd = ta.trend.MACD(df['close'], window_fast=CONFIG["MACD_FAST"], window_slow=CONFIG["MACD_SLOW"])
+#                 df['macd_val'], df['macd_signal'] = macd.macd(), macd.macd_signal()
+
+#                 df.dropna(inplace=True)
+#                 if not df.empty:
+#                     sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
+                    
+#                     # --- NOVOS FILTROS (TÓPICO 2) ---
+#                     t_h1 = verificar_tendencia_macro(PAR)
+#                     # atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
+                    
+#                     # Filtro de Tendência Global
+#                     if "CALL" in sinal and t_h1 == "BAIXA":
+#                         sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
+#                     elif "PUT" in sinal and t_h1 == "ALTA":
+#                         sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
                     
                     # # Filtro de Volatilidade (ATR Mínimo)
                     # if atr < (df['close'].iloc[-1] * 0.00005):
@@ -384,4 +443,5 @@ Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg=
 
 
 root.mainloop()
+
 
