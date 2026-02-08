@@ -243,69 +243,7 @@ def analisar():
                 time.sleep(1)
         except Exception as e:
             print(f"Erro: {e}"); time.sleep(5)
-# def analisar():
-#     global rodando
-#     while rodando:
-#         try:
-#             txt_nws, cor_nws = verificar_status_mercado()
-#             root.after(0, lambda: news_label.config(text=txt_nws, fg=cor_nws))
 
-#             data = yf.download(PAR, period="5d", interval=TIMEFRAME, progress=False)
-#             if data is not None and not data.empty:
-#                 df = data.copy()
-#                 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
-
-#                 df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
-#                 df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
-#                 df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
-#                 df['ema_trend'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_TENDENCIA"]).ema_indicator()
-#                 df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], CONFIG["ADX_PERIODO"]).adx()
-#                 df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], CONFIG["CCI_PERIODO"]).cci()
-#                 bb = ta.volatility.BollingerBands(df['close'], window=CONFIG["BB_PERIODO"], window_dev=CONFIG["BB_DESVIO"])
-#                 df['bb_high'], df['bb_low'] = bb.bollinger_hband(), bb.bollinger_lband()
-#                 stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=CONFIG["STOCH_K"], smooth_window=CONFIG["STOCH_D"])
-#                 df['stoch_k'], df['stoch_d'] = stoch.stoch(), stoch.stoch_signal()
-#                 macd = ta.trend.MACD(df['close'], window_fast=CONFIG["MACD_FAST"], window_slow=CONFIG["MACD_SLOW"])
-#                 df['macd_val'], df['macd_signal'] = macd.macd(), macd.macd_signal()
-
-#                 df.dropna(inplace=True)
-#                 if not df.empty:
-#                     sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
-                    
-#                     # --- NOVOS FILTROS (TÓPICO 2) ---
-#                     t_h1 = verificar_tendencia_macro(PAR)
-#                     # atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
-                    
-#                     # Filtro de Tendência Global
-#                     if "CALL" in sinal and t_h1 == "BAIXA":
-#                         sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
-#                     elif "PUT" in sinal and t_h1 == "ALTA":
-#                         sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
-                    
-                    # # Filtro de Volatilidade (ATR Mínimo)
-                    # if atr < (df['close'].iloc[-1] * 0.00005):
-                    #     sinal, cor = "⏳ SEM VOLATILIDADE", "#444"
-
-                    # root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
-                    # if "📈" in sinal or "📉" in sinal:
-                    #     winsound.Beep(1000, 500)
-                    #     reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
-                    #     root.after(0, lambda r=reg: adicionar_historico(r))
-
-        #     for i in range(30, 0, -1):
-        #         if not rodando: break
-        #         root.after(0, lambda t=i: tempo_label.config(text=f"⏱ Próxima Análise: {t}s"))
-        #         time.sleep(1)
-        # except Exception as e:
-        #     print(f"Erro: {e}"); time.sleep(5)
-
-# ================= FUNÇÕES DE CONTROLE =================
-# def registrar_resultado(tipo):
-#     global PLACAR
-#     PLACAR[tipo] += 1
-#     total = PLACAR["WIN"] + PLACAR["LOSS"]
-#     wr = (PLACAR["WIN"] / total * 100) if total > 0 else 0
-#     placar_label.config(text=f"🏆 WIN: {PLACAR['WIN']} | ❌ LOSS: {PLACAR['LOSS']} ({wr:.1f}%)")
 
 def aplicar_config():
     global PAR, TIMEFRAME, EXPIRACAO, ESTRATEGIA, CONFIG
@@ -412,15 +350,6 @@ Label(f_tecnico, text=" Stoch K/D:", fg="white", bg="#0d0d0d").grid(row=4, colum
 
 Button(root, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#333", fg="white", font=("Arial", 9, "bold")).pack(pady=5, fill="x", padx=50)
 
-# --- NOVO: PAINEL DE PLACAR (TÓPICO 4) ---
-# f_placar = Frame(root, bg="#111", pady=5)
-# f_placar.pack(fill="x", padx=10, pady=5)
-# placar_label = Label(f_placar, text="🏆 WIN: 0 | ❌ LOSS: 0 (0.0%)", fg="white", bg="#111", font=("Arial", 10, "bold"))
-# placar_label.pack()
-# btn_placar_f = Frame(f_placar, bg="#111")
-# btn_placar_f.pack()
-# Button(btn_placar_f, text="✅ WIN", command=lambda: registrar_resultado("WIN"), bg="#005500", fg="white", width=10).grid(row=0, column=0, padx=5)
-# Button(btn_placar_f, text="❌ LOSS", command=lambda: registrar_resultado("LOSS"), bg="#550000", fg="white", width=10).grid(row=0, column=1, padx=5)
 
 # --- RESULTADOS ---
 sinal_label = Label(root, text="---", fg="white", bg="#0d0d0d", font=("Arial", 26, "bold")); sinal_label.pack()
@@ -443,6 +372,5 @@ Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg=
 
 
 root.mainloop()
-
 
 
