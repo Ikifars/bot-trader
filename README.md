@@ -1,112 +1,50 @@
-# 📈 Trading Signal Bot (Binary Options Analyzer)
+💹 Rafiki Trader Engine PRO
+Rafiki Trader Engine é um software de análise técnica em tempo real para o mercado financeiro (Forex/Opções Binárias), desenvolvido em Python. Ele utiliza bibliotecas de alta precisão para monitorar ativos via Yahoo Finance e identificar oportunidades baseadas em confluências de indicadores.
 
-Bot analisador de mercado desenvolvido em **Python**, com **interface gráfica**, focado em gerar **sinais de CALL / PUT** para operações em **opções binárias** (ex.: IQ Option, Pocket Option).
+🚀 Funcionalidades Principais
+Multiestratégias: 10 estratégias integradas, incluindo Sniper PRO, CCI Reversa, RSI Extremo e Suporte/Resistência H1.
 
-> ⚠️ Importante:  
-> Este projeto **NÃO executa operações automaticamente**.  
-> Ele funciona como **ferramenta de apoio à decisão**, analisando dados de mercado e exibindo sinais com base em regras objetivas.
+Painel Técnico Ajustável: Calibragem em tempo real de períodos de RSI, EMAs, Bandas de Bollinger, MACD e Stochastic.
 
----
+Filtro de Volatilidade: Sistema inteligente que alerta sobre horários de notícias e alta volatilidade.
 
-## 🎯 Objetivo do Projeto
+Análise de Confluência: Cálculo automático de "Força da Vela" e "Nível de Confiança" para cada sinal emitido.
 
-Criar uma aplicação capaz de:
-- Analisar candles de mercado em tempo real
-- Aplicar estratégias técnicas objetivas
-- Exibir sinais claros (CALL / PUT / AGUARDAR)
-- Evitar dependência de APIs proprietárias de corretoras
-- Oferecer uma interface simples, funcional e extensível
+Alertas Sonoros: Notificação por áudio sempre que uma oportunidade de entrada é detectada.
 
-O foco é **educacional, técnico e demonstrativo**, ideal para portfólio de desenvolvimento.
+Histórico de Sinais: Log detalhado das operações sugeridas durante a sessão.
 
----
+🛠️ Tecnologias Utilizadas
+Python 3.x
 
-## 🧠 Estratégia (Padrão)
+Pandas & TA (Technical Analysis Library): Para processamento de dados e indicadores.
 
-A estratégia padrão utiliza:
+YFinance: Para streaming de dados do mercado.
 
-- **RSI (14)** – identificação de sobrecompra/sobrevenda  
-- **EMA 9 e EMA 21** – cruzamento de médias  
-- **Timeframe:** 1 minuto (M1)
+Tkinter: Interface gráfica (GUI) intuitiva e leve.
 
-### Regras básicas
-- 📈 **CALL**
-  - RSI < 30
-  - EMA 9 cruza acima da EMA 21
-- 📉 **PUT**
-  - RSI > 70
-  - EMA 9 cruza abaixo da EMA 21
-- ⏳ **AGUARDAR**
-  - Quando não há confluência suficiente
+Threading: Processamento em segundo plano para não travar a interface.
 
-> O código foi estruturado para permitir **troca fácil de estratégia**.
+📋 Como Instalar
+Clone o repositório:
 
----
+Bash
+git clone https://github.com/seu-usuario/rafiki-trader-engine.git
+Instale as dependências necessárias:
 
-## 🖥️ Interface Gráfica
+Bash
+pip install pandas ta yfinance
+Nota: A biblioteca tkinter e winsound já costumam vir instaladas nativamente no Python para Windows.
 
-Interface desenvolvida com **Tkinter**, exibindo:
-- Par analisado
-- Timeframe
-- Sinal atual (CALL / PUT / AGUARDAR)
-- Controles de iniciar e parar análise
+🚦 Como Usar
+Execute o arquivo principal: python main.py.
 
-Design simples e funcional, priorizando clareza e estabilidade.
+No campo Par, digite o ativo desejado (Ex: EURUSD=X, BTC-USD).
 
----
+Escolha o Timeframe (1m, 5m, 15m, etc).
 
-## 🛠️ Tecnologias Utilizadas
+Selecione sua Estratégia de preferência.
 
-- **Python 3**
-- **Tkinter** – interface gráfica
-- **pandas** – manipulação de dados
-- **ta** – indicadores técnicos
-- **yfinance** – obtenção de dados de mercado
+Clique em 🔄 APLICAR TUDO para calibrar os indicadores.
 
----
-
-## 📦 Instalação
-
-### 1️⃣ Clone o repositório
-```bash
-git clone https://github.com/Ikifars/bot-trader
-cd seu-repositorio
-python -m pip install pandas ta yfinance
-python bot.py
-
-````
-
-## PAR = "EURUSD=X"
-## PAR = "GBPUSD=X"
-## PAR = "USDJPY=X"
-
-
-🔧 Alterar ou Criar Estratégias
-
-As estratégias estão isoladas dentro da função de análise, permitindo:
-criação de múltiplas estratégias
-alternância rápida
-testes e melhorias contínuas
-O projeto foi pensado para extensão e refatoração futura.
-
-⚠️ Aviso Legal
-
-Este projeto:
-• Não garante lucros
-• Não executa ordens automaticamente
-• Não se conecta diretamente a contas de corretoras
-• Não deve ser utilizado como único critério de decisão financeira
-• Uso educacional e experimental.
-
-👨‍💻 Autor
-Raphael Victor (Rafiki)
-Desenvolvedor em formação, focado em:
-
-Python
-Análise de dados
-Automação
-Interfaces gráficas
-Soluções práticas para mercado real
-
-📫 Contato: raphaelvictor016@gmail.com
-
+Clique em ▶ INICIAR MOTOR para começar o monitoramento.
