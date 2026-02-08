@@ -1,50 +1,47 @@
-💹 Rafiki Trader Engine PRO
-Rafiki Trader Engine é um software de análise técnica em tempo real para o mercado financeiro (Forex/Opções Binárias), desenvolvido em Python. Ele utiliza bibliotecas de alta precisão para monitorar ativos via Yahoo Finance e identificar oportunidades baseadas em confluências de indicadores.
+# 🦁 Rafiki Trader Engine PRO
+> **Motor de Análise Técnica de Alta Precisão para Forex e Opções Binárias**
 
-🚀 Funcionalidades Principais
-Multiestratégias: 10 estratégias integradas, incluindo Sniper PRO, CCI Reversa, RSI Extremo e Suporte/Resistência H1.
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Yahoo Finance](https://img.shields.io/badge/Data-YFinance-red?style=for-the-badge)
+![Trading](https://img.shields.io/badge/Trading-Pro-green?style=for-the-badge)
 
-Painel Técnico Ajustável: Calibragem em tempo real de períodos de RSI, EMAs, Bandas de Bollinger, MACD e Stochastic.
+O **Rafiki Trader Engine** é um software de automação analítica que monitora o mercado financeiro em tempo real. Ele combina indicadores clássicos com algoritmos de confluência para entregar sinais de alta probabilidade diretamente na sua tela.
 
-Filtro de Volatilidade: Sistema inteligente que alerta sobre horários de notícias e alta volatilidade.
+---
 
-Análise de Confluência: Cálculo automático de "Força da Vela" e "Nível de Confiança" para cada sinal emitido.
+## 💎 Diferenciais da Versão PRO
 
-Alertas Sonoros: Notificação por áudio sempre que uma oportunidade de entrada é detectada.
+### 🧠 Inteligência de Mercado
+* **Detector de Volatilidade:** Monitoramento de minutos críticos para evitar notícias de alto impacto.
+* **Price Action H1:** Identifica níveis de suporte e resistência em tempos maiores para validar entradas no M1.
+* **Força da Vela:** Algoritmo que mede a pressão compradora/vendedora do candle atual.
 
-Histórico de Sinais: Log detalhado das operações sugeridas durante a sessão.
+### 🛠️ Painel de Controle Total
+Diferente de indicadores estáticos, aqui você calibra **cada parâmetro**:
+* **CCI Período:** Ajuste fino para detecção de exaustão.
+* **RSI Dinâmico:** Níveis de sobrecompra e sobrevenda customizáveis.
+* **EMAs:** Configuração de médias para tendência e cruzamento.
 
-🛠️ Tecnologias Utilizadas
-Python 3.x
+---
 
-Pandas & TA (Technical Analysis Library): Para processamento de dados e indicadores.
+## 📊 Estratégias Integradas
 
-YFinance: Para streaming de dados do mercado.
+| Estratégia | Base Técnica | Perfil |
+| :--- | :--- | :--- |
+| **Sniper Precisão** | BB + RSI + ADX + EMA | Conservador |
+| **CCI Reversa** | Exaustão de Tendência | Reversão |
+| **MACD PRO** | Cruzamento de Momentum | Tendência |
+| **Suporte/Resistência** | Níveis de H1 (Preço Real) | Price Action |
+| **Stochastic** | Sobrecarga de Preço | Scalping |
 
-Tkinter: Interface gráfica (GUI) intuitiva e leve.
+---
 
-Threading: Processamento em segundo plano para não travar a interface.
+## ⚙️ Configuração do Ambiente
 
-📋 Como Instalar
-Clone o repositório:
+### Pré-requisitos
+Certifique-se de ter o Python 3.8+ instalado.
 
-Bash
-git clone https://github.com/seu-usuario/rafiki-trader-engine.git
-Instale as dependências necessárias:
-
-Bash
+### Instalação das Dependências
+Execute o comando abaixo no seu terminal:
+```bash
 pip install pandas ta yfinance
-Nota: A biblioteca tkinter e winsound já costumam vir instaladas nativamente no Python para Windows.
-
-🚦 Como Usar
-Execute o arquivo principal: python main.py.
-
-No campo Par, digite o ativo desejado (Ex: EURUSD=X, BTC-USD).
-
-Escolha o Timeframe (1m, 5m, 15m, etc).
-
-Selecione sua Estratégia de preferência.
-
-Clique em 🔄 APLICAR TUDO para calibrar os indicadores.
-
-Clique em ▶ INICIAR MOTOR para começar o monitoramento.
