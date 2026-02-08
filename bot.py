@@ -8,6 +8,11 @@ from tkinter import ttk
 from datetime import datetime
 import winsound
 import random
+import warnings
+import traceback
+
+# Suprimir aviso específico do pandas sobre 'd' depreciado (geralmente gerado por libs externas)
+warnings.filterwarnings("ignore", message=".*'d' is deprecated and will be removed in a future version.*")
 
 # ================= CONFIGURAÇÕES TÉCNICAS PADRÃO =================
 CONFIG = {
@@ -28,6 +33,14 @@ CONFIG = {
     "MACD_FAST": 12,
     "MACD_SLOW": 26
 }
+# --- Novos parâmetros de filtros/validação ---
+CONFIG.update({
+    "MIN_CONFLUENCE": 30,        # f_s mínimo para aceitar sinal
+    "MAX_ATR_PCT": 1.0,          # ATR máximo (%%) permitido para não ser mercado muito volátil
+    "MIN_DIST_EMA_PCT": 0.02,    # distância mínima da price à EMA trend (%%) para sinais de tendência
+    "MAX_DIST_BB_PCT": 0.3,      # distância máxima (%%) do preço à banda para considerar toque BB
+    "NEWS_BLOCK": True           # bloquear sinais em janelas de notícias identificadas
+})
 
 rodando = False
 PAR = "EURUSD=X"
@@ -36,8 +49,9 @@ EXPIRACAO = 1
 ESTRATEGIA = "RSI + EMA"
 ultima_vela_analisada = None  # Nova variável para evitar spam
 PLACAR = {"WIN": 0, "LOSS": 0} # Novo: Controle de Placar
+ultimo_sinal_notificado = None  # Guarda último sinal enviado (evita repetição no mesmo candle)
 
-TIMEFRAMES_YF = ["1m","2m","5m","15m","30m","60m","90m","1d","5d","1wk","1mo"]
+TIMEFRAMES_YF = ["1m","2m","5m","15m","30m","60m","90m","1D","5D","1wk","1mo"]
 EXPIRACOES = list(range(1,31))
 
 # ================= NOVO: SISTEMA DE ALERTA DE NOTÍCIAS =================
@@ -50,22 +64,28 @@ def verificar_status_mercado():
 # ================= NOVO: DETECÇÃO DE PREÇO H1 E TENDÊNCIA =================
 def detectar_niveis_h1(par):
     try:
-        data_h1 = yf.download(par, period="5d", interval="60m", progress=False)
+        # normalizar período para evitar Pandas4Warning ('d' -> 'D')
+        data_h1 = yf.download(par, period="5D", interval="60m", progress=False)
         if data_h1.empty: return [], []
         data_h1.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in data_h1.columns]
         resistencias = data_h1['high'].nlargest(5).tolist()
         suportes = data_h1['low'].nsmallest(5).tolist()
         return suportes, resistencias
-    except: return [], []
+    except Exception as e:
+        print(f"detectar_niveis_h1 erro: {e}")
+        return [], []
 
 def verificar_tendencia_macro(par):
     try:
-        data_h1 = yf.download(par, period="5d", interval="60m", progress=False)
+        # normalizar período para evitar Pandas4Warning ('d' -> 'D')
+        data_h1 = yf.download(par, period="5D", interval="60m", progress=False)
         data_h1.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in data_h1.columns]
         ema_macro = ta.trend.EMAIndicator(data_h1['close'], window=100).ema_indicator()
         if data_h1['close'].iloc[-1] > ema_macro.iloc[-1]: return "ALTA"
         return "BAIXA"
-    except: return "INDEFINIDA"
+    except Exception as e:
+        print(f"verificar_tendencia_macro erro: {e}")
+        return "INDEFINIDA"
 
 # ================= UTILIDADES DE CONFLUÊNCIA =================
 def calcular_forca_vela(df):
@@ -75,7 +95,9 @@ def calcular_forca_vela(df):
         range_total = u['high'] - u['low']
         if range_total < 0.000001: return 50.0
         return round((corpo / range_total) * 100, 1)
-    except: return 50.0
+    except Exception as e:
+        print(f"calcular_forca_vela erro: {e}")
+        return 50.0
 
 def medir_confluencia_total(df, sinal_tipo):
     if "AGUARDAR" in sinal_tipo: return 0
@@ -87,6 +109,48 @@ def medir_confluencia_total(df, sinal_tipo):
     if (u['close'] > u['ema_trend'] and "CALL" in sinal_tipo) or (u['close'] < u['ema_trend'] and "PUT" in sinal_tipo):
         pontos += 20
     return min(pontos, 100)
+
+# ----------------- UTILITÁRIAS DE DADOS E INDICADORES -----------------
+def normalize_columns(df):
+    """Garantir colunas lowercase sem multiindex."""
+    df = df.copy()
+    df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
+    return df
+
+def compute_indicators(df):
+    """Calcula e anexa todos os indicadores técnicos usados pelo motor.
+    Recebe um DataFrame com colunas 'open','high','low','close' e retorna o mesmo DataFrame com novas colunas.
+    """
+    # validar tamanho mínimo requerido pelos indicadores para evitar "negative dimensions"
+    n = len(df)
+    required = max(
+        CONFIG.get("RSI_PERIODO", 0),
+        CONFIG.get("EMA_TENDENCIA", 0),
+        CONFIG.get("MACD_SLOW", 0),
+        CONFIG.get("BB_PERIODO", 0),
+        CONFIG.get("ADX_PERIODO", 0),
+        CONFIG.get("CCI_PERIODO", 0),
+        CONFIG.get("STOCH_K", 0),
+        14  # ATR window
+    )
+    if n < required:
+        raise ValueError(f"Dados insuficientes para indicadores: precisa de >={required} barras, tem {n}")
+
+    # assumir cópia do chamador quando necessário
+    df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
+    df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
+    df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
+    df['ema_trend'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_TENDENCIA"]).ema_indicator()
+    df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], CONFIG["ADX_PERIODO"]).adx()
+    df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], CONFIG["CCI_PERIODO"]).cci()
+    bb = ta.volatility.BollingerBands(df['close'], window=CONFIG["BB_PERIODO"], window_dev=CONFIG["BB_DESVIO"])
+    df['bb_high'], df['bb_low'] = bb.bollinger_hband(), bb.bollinger_lband()
+    stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=CONFIG["STOCH_K"], smooth_window=CONFIG["STOCH_D"])
+    df['stoch_k'], df['stoch_d'] = stoch.stoch(), stoch.stoch_signal()
+    macd = ta.trend.MACD(df['close'], window_fast=CONFIG["MACD_FAST"], window_slow=CONFIG["MACD_SLOW"])
+    df['macd_val'], df['macd_signal'] = macd.macd(), macd.macd_signal()
+    df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range()
+    return df
 
 # ================= ESTRATÉGIAS =================
 def estrategia_sniper_pro(df):
@@ -192,31 +256,36 @@ def analisar():
             txt_nws, cor_nws = verificar_status_mercado()
             root.after(0, lambda: news_label.config(text=txt_nws, fg=cor_nws))
 
-            data = yf.download(PAR, period="2d", interval=TIMEFRAME, progress=False)
+            # normalizar período/intervalo para evitar Pandas4Warning ('d' -> 'D')
+            period_str = "2D"
+            interval_str = TIMEFRAME
+            if isinstance(interval_str, str) and interval_str.endswith('d'):
+                interval_str = interval_str[:-1] + 'D'
+            data = yf.download(PAR, period=period_str, interval=interval_str, progress=False)
             if data is not None and not data.empty:
                 df = data.copy()
                 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
-                
-                # Identifica o horário de abertura da vela atual
-                timestamp_atual = df.index[-1]
 
-                # --- CÁLCULOS TÉCNICOS ---
-                df['rsi'] = ta.momentum.RSIIndicator(df['close'], CONFIG["RSI_PERIODO"]).rsi()
-                df['ema9'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_CURTA"]).ema_indicator()
-                df['ema21'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_LONGA"]).ema_indicator()
-                df['ema_trend'] = ta.trend.EMAIndicator(df['close'], CONFIG["EMA_TENDENCIA"]).ema_indicator()
-                df['adx'] = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], CONFIG["ADX_PERIODO"]).adx()
-                df['cci'] = ta.trend.CCIIndicator(df['high'], df['low'], df['close'], CONFIG["CCI_PERIODO"]).cci()
-                bb = ta.volatility.BollingerBands(df['close'], window=CONFIG["BB_PERIODO"], window_dev=CONFIG["BB_DESVIO"])
-                df['bb_high'], df['bb_low'] = bb.bollinger_hband(), bb.bollinger_lband()
-                stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=CONFIG["STOCH_K"], smooth_window=CONFIG["STOCH_D"])
-                df['stoch_k'], df['stoch_d'] = stoch.stoch(), stoch.stoch_signal()
-                macd = ta.trend.MACD(df['close'], window_fast=CONFIG["MACD_FAST"], window_slow=CONFIG["MACD_SLOW"])
-                df['macd_val'], df['macd_signal'] = macd.macd(), macd.macd_signal()
+                # Usar apenas velas fechadas para gerar sinais (evita 'ruído' da vela em formação)
+                if len(df) < 3:
+                    # não há candles suficientes para calcular indicadores confiáveis
+                    time.sleep(1)
+                    continue
 
-                df.dropna(inplace=True)
-                if not df.empty:
-                    sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df)
+                df_closed = df.iloc[:-1].copy()  # remove última vela em formação
+                timestamp_atual = df_closed.index[-1]  # timestamp da última vela fechada
+
+                # --- CÁLCULOS TÉCNICOS (em velas fechadas) ---
+                try:
+                    df_closed = compute_indicators(df_closed)
+                    df_closed.dropna(inplace=True)
+                except ValueError as e:
+                    # dados insuficientes para calcular indicadores nesta janela
+                    root.after(0, lambda msg=str(e): status_label.config(text=msg, fg="orange"))
+                    time.sleep(1)
+                    continue
+                if not df_closed.empty:
+                    sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df_closed)
                     
                     # Filtros de Tendência Macro H1
                     t_h1 = verificar_tendencia_macro(PAR)
@@ -227,14 +296,58 @@ def analisar():
 
                     # Atualiza a interface (Sempre)
                     root.after(0, atualizar_sinal, sinal, cor, f_v, f_s)
-                    
-                    # --- LÓGICA DE ALERTA SEM SPAM ---
-                    # Só apita e loga se for sinal de compra/venda E se ainda não avisou NESTA vela
-                    if ("📈" in sinal or "📉" in sinal) and timestamp_atual != ultima_vela_analisada:
-                        ultima_vela_analisada = timestamp_atual
-                        winsound.Beep(1000, 500) 
-                        reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
-                        root.after(0, lambda r=reg: adicionar_historico(r))
+
+                    # --- FILTROS AVANÇADOS ANTES DE LOGAR ---
+                    # bloqueio por notícias
+                    news_block = ("ALTA VOLATILIDADE" in txt_nws) and CONFIG.get("NEWS_BLOCK", True)
+
+                    # valores atuais para checagens
+                    u = df_closed.iloc[-1]
+                    atr_pct = (u['atr'] / u['close']) * 100 if u['atr'] > 0 else 0
+                    dist_ema_pct = abs(u['close'] - u['ema_trend']) / u['close'] * 100
+                    # distância até bandas
+                    dist_bb_low_pct = abs(u['close'] - u['bb_low']) / u['close'] * 100
+                    dist_bb_high_pct = abs(u['close'] - u['bb_high']) / u['close'] * 100
+
+                    filtros_ok = True
+                    motivo_block = None
+
+                    # confluência mínima
+                    if f_s < CONFIG.get("MIN_CONFLUENCE", 0):
+                        filtros_ok = False; motivo_block = "Confluência abaixo do mínimo"
+
+                    # volatilidade via ATR
+                    if filtros_ok and atr_pct > CONFIG.get("MAX_ATR_PCT", 100):
+                        filtros_ok = False; motivo_block = "ATR alto"
+
+                    # distância mínima da EMA para sinais de tendência
+                    if filtros_ok and ("TREND" in sinal or "CONF" in sinal or "SNIPER" in sinal):
+                        if dist_ema_pct < CONFIG.get("MIN_DIST_EMA_PCT", 0):
+                            filtros_ok = False; motivo_block = "Distância à EMA insuficiente"
+
+                    # proximidade com bandas (para estratégias BB)
+                    if filtros_ok and ("BB" in sinal or "BAND" in sinal or "SNIPER" in sinal):
+                        if "CALL" in sinal and dist_bb_low_pct > CONFIG.get("MAX_DIST_BB_PCT", 100):
+                            filtros_ok = False; motivo_block = "Preço não próximo à BB baixa"
+                        if "PUT" in sinal and dist_bb_high_pct > CONFIG.get("MAX_DIST_BB_PCT", 100):
+                            filtros_ok = False; motivo_block = "Preço não próximo à BB alta"
+
+                    # notícias
+                    if filtros_ok and news_block:
+                        filtros_ok = False; motivo_block = "Janela de notícias (alta volatilidade)"
+
+                    # --- LÓGICA DE ALERTA SEM SPAM (após filtros) ---
+                    global ultima_vela_analisada, ultimo_sinal_notificado
+                    if filtros_ok and ("📈" in sinal or "📉" in sinal):
+                        if timestamp_atual != ultima_vela_analisada or sinal != ultimo_sinal_notificado:
+                            ultima_vela_analisada = timestamp_atual
+                            ultimo_sinal_notificado = sinal
+                            winsound.Beep(1000, 500)
+                            reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
+                            root.after(0, lambda r=reg: adicionar_historico(r))
+                    elif not filtros_ok and ("📈" in sinal or "📉" in sinal):
+                        # opcional: log breve motivo bloqueio (não enfileira no histórico principal)
+                        root.after(0, lambda m=motivo_block: status_label.config(text=f"⚠️ Sinal bloqueado: {m}", fg="orange"))
 
             # Tempo reduzido para 10 segundos
             for i in range(10, 0, -1):
@@ -256,9 +369,84 @@ def aplicar_config():
         CONFIG["BB_PERIODO"] = int(bb_p_var.get()); CONFIG["BB_DESVIO"] = float(bb_d_var.get())
         CONFIG["STOCH_K"] = int(st_k_var.get()); CONFIG["STOCH_D"] = int(st_d_var.get())
         CONFIG["MACD_FAST"] = int(mc_f_var.get()); CONFIG["MACD_SLOW"] = int(mc_s_var.get())
+        # --- Ler filtros avançados ---
+        # Ler e sanitizar filtros avançados (não permitir negativos)
+        CONFIG["MIN_CONFLUENCE"] = max(0.0, float(min_conf_var.get()))
+        CONFIG["MAX_ATR_PCT"] = max(0.0, float(max_atr_var.get()))
+        CONFIG["MIN_DIST_EMA_PCT"] = max(0.0, float(min_dist_ema_var.get()))
+        CONFIG["MAX_DIST_BB_PCT"] = max(0.0, float(max_dist_bb_var.get()))
+        CONFIG["NEWS_BLOCK"] = bool(news_block_var.get())
         status_label.config(text=f"✅ SISTEMA CALIBRADO", fg="cyan")
     except Exception as e:
         status_label.config(text=f"Erro: {e}", fg="red")
+
+def run_backtest(days=30):
+    try:
+        status_label.config(text="🔁 Rodando backtest...", fg="white")
+        # normalizar período/intervalo para evitar Pandas4Warning ('d' -> 'D')
+        period_str = f"{days}D"
+        interval_str = TIMEFRAME
+        if isinstance(interval_str, str) and interval_str.endswith('d'):
+            interval_str = interval_str[:-1] + 'D'
+        data = yf.download(PAR, period=period_str, interval=interval_str, progress=False)
+        if data is None or data.empty:
+            status_label.config(text="Erro: dados insuficientes para backtest", fg="red")
+            return
+        df = data.copy()
+        df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
+
+        # calcula indicadores sobre histórico inteiro
+        try:
+            df = compute_indicators(df)
+            df.dropna(inplace=True)
+        except ValueError as e:
+            tb = traceback.format_exc()
+            print(tb)
+            status_label.config(text=str(e), fg="red")
+            return
+        wins = 0; losses = 0; signals = 0
+
+        # iterar por candles fechados (até penúltimo, pois usamos próximo candle como resultado)
+        for i in range(2, len(df)-1):
+            slice_df = df.iloc[:i+1].copy()
+            sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](slice_df)
+            # aplica mesmos filtros mínimos usados em tempo real (sem checagem news/h1 por simplicidade)
+            u = slice_df.iloc[-1]
+            atr_pct = (u['atr'] / u['close']) * 100 if u['atr'] > 0 else 0
+            dist_ema_pct = abs(u['close'] - u['ema_trend']) / u['close'] * 100
+            dist_bb_low_pct = abs(u['close'] - u['bb_low']) / u['close'] * 100
+            dist_bb_high_pct = abs(u['close'] - u['bb_high']) / u['close'] * 100
+            if ("📈" in sinal or "📉" in sinal) and f_s >= CONFIG.get("MIN_CONFLUENCE", 0) and atr_pct <= CONFIG.get("MAX_ATR_PCT", 100):
+                # BB proximity filter
+                if ("BB" in sinal or "BAND" in sinal or "SNIPER" in sinal):
+                    if "CALL" in sinal and dist_bb_low_pct > CONFIG.get("MAX_DIST_BB_PCT", 100):
+                        continue
+                    if "PUT" in sinal and dist_bb_high_pct > CONFIG.get("MAX_DIST_BB_PCT", 100):
+                        continue
+                # EMA distance filter for trend
+                if ("TREND" in sinal or "CONF" in sinal or "SNIPER" in sinal) and dist_ema_pct < CONFIG.get("MIN_DIST_EMA_PCT", 0):
+                    continue
+
+                signals += 1
+                # resultado baseado no próximo candle
+                prox = df.iloc[i+1]
+                if "CALL" in sinal:
+                    if prox['close'] > prox['open']: wins += 1
+                    else: losses += 1
+                elif "PUT" in sinal:
+                    if prox['close'] < prox['open']: wins += 1
+                    else: losses += 1
+
+        acc = (wins / signals * 100) if signals>0 else 0
+        status_label.config(text=f"Backtest: Sinais={signals} | Wins={wins} | Losses={losses} | Acc={acc:.1f}%", fg="cyan")
+    except Exception as e:
+        # log completo para debug
+        tb = traceback.format_exc()
+        print(tb)
+        status_label.config(text=f"Erro backtest: {e}", fg="red")
+
+def iniciar_backtest_thread():
+    threading.Thread(target=run_backtest, args=(30,), daemon=True).start()
 
 def iniciar():
     global rodando
@@ -273,7 +461,12 @@ def parar():
     sinal_label.config(text="⏹️ PARADO", fg="white")
 
 def limpar_historico():
+    global ultima_vela_analisada, ultimo_sinal_notificado
     historico_box.delete(0, END)
+    # Ao limpar o histórico, permitir que o próximo sinal seja registrado
+    # mesmo que seja o mesmo timestamp da vela atual.
+    ultima_vela_analisada = None
+    ultimo_sinal_notificado = None
 
 def atualizar_sinal(sinal, cor, f_v, f_s):
     sinal_label.config(text=sinal, fg=cor)
@@ -288,7 +481,9 @@ def adicionar_historico(texto):
 # ================= INTERFACE OTIMIZADA =================
 root = Tk()
 root.title("Rafiki Trader PRO")
-root.geometry("600x650") 
+# Tema sutil 'hacker': fonte monoespaçada por padrão (não altera cores dos indicadores)
+root.option_add("*Font", "Consolas 10")
+root.geometry("550x700") 
 root.configure(bg="#0d0d0d")
 
 news_frame = Frame(root, bg="#222", height=30)
@@ -348,6 +543,43 @@ Entry(f_tecnico, textvariable=st_k_var, width=2).grid(row=4, column=5, sticky="w
 Entry(f_tecnico, textvariable=st_d_var, width=2).grid(row=4, column=5, sticky="e")
 Label(f_tecnico, text=" Stoch K/D:", fg="white", bg="#0d0d0d").grid(row=4, column=4, sticky="e")
 
+# --- FILTROS AVANÇADOS (GUI) ---
+f_filtros = LabelFrame(root, text=" Filtros Avançados ", fg="magenta", bg="#0d0d0d", padx=5, pady=5)
+f_filtros.pack(pady=4, fill="x", padx=10)
+
+# Variáveis vinculadas
+min_conf_var = StringVar(value=str(CONFIG.get("MIN_CONFLUENCE", 30)))
+max_atr_var = StringVar(value=str(CONFIG.get("MAX_ATR_PCT", 1.0)))
+min_dist_ema_var = StringVar(value=str(CONFIG.get("MIN_DIST_EMA_PCT", 0.02)))
+max_dist_bb_var = StringVar(value=str(CONFIG.get("MAX_DIST_BB_PCT", 0.3)))
+news_block_var = BooleanVar(value=CONFIG.get("NEWS_BLOCK", True))
+
+Label(f_filtros, text="Min Confluência:", fg="white", bg="#0d0d0d").grid(row=0, column=0, sticky="e")
+Entry(f_filtros, textvariable=min_conf_var, width=6).grid(row=0, column=1, padx=6)
+Label(f_filtros, text="(%)", fg="white", bg="#0d0d0d").grid(row=0, column=2, sticky="w")
+
+Label(f_filtros, text="Max ATR (%):", fg="white", bg="#0d0d0d").grid(row=0, column=3, sticky="e")
+Entry(f_filtros, textvariable=max_atr_var, width=6).grid(row=0, column=4, padx=6)
+
+Label(f_filtros, text="Min Dist EMA (%):", fg="white", bg="#0d0d0d").grid(row=1, column=0, sticky="e")
+Entry(f_filtros, textvariable=min_dist_ema_var, width=6).grid(row=1, column=1, padx=6)
+
+Label(f_filtros, text="Max Dist BB (%):", fg="white", bg="#0d0d0d").grid(row=1, column=3, sticky="e")
+Entry(f_filtros, textvariable=max_dist_bb_var, width=6).grid(row=1, column=4, padx=6)
+
+Checkbutton(f_filtros, text="Bloquear em notícias", variable=news_block_var, bg="#0d0d0d", fg="white", selectcolor="#222").grid(row=2, column=0, columnspan=2, sticky="w", pady=6)
+
+# Atualiza CONFIG assim que o usuário altera (responsivo)
+def _on_filtro_change(*args):
+    try:
+        aplicar_config()
+    except Exception:
+        pass
+
+for v in (min_conf_var, max_atr_var, min_dist_ema_var, max_dist_bb_var):
+    v.trace_add('write', _on_filtro_change)
+news_block_var.trace_add('write', _on_filtro_change)
+
 Button(root, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#333", fg="white", font=("Arial", 9, "bold")).pack(pady=5, fill="x", padx=50)
 
 
@@ -362,13 +594,33 @@ tempo_label = Label(root, text="⏱ 0s", fg="yellow", bg="#0d0d0d", font=("Arial
 par_label = Label(root, text="---", fg="cyan", bg="#0d0d0d", font=("Arial", 9)); par_label.pack()
 
 historico_box = Listbox(root, width=65, height=5, bg="#111", fg="white", font=("Consolas", 9)); historico_box.pack(pady=5)
-Button(root, text="LIMPAR LOG", command=limpar_historico, bg="#222", fg="#888", font=("Arial", 7)).pack()
+# Botões para gerenciamento do histórico
+btn_hist_frame = Frame(root, bg="#0d0d0d")
+btn_hist_frame.pack(pady=2)
+Button(btn_hist_frame, text="LIMPAR LOG", command=limpar_historico, bg="#222", fg="#888", font=("Arial", 7)).grid(row=0, column=0, padx=4)
+Button(btn_hist_frame, text="REMOVER SELECIONADO", command=lambda: remover_historico_selecionado(), bg="#333", fg="#fff", font=("Arial", 7)).grid(row=0, column=1, padx=4)
+
+# Permite usar a tecla Delete para remover seleção
+def remover_historico_selecionado():
+    global ultima_vela_analisada, ultimo_sinal_notificado
+    sel = historico_box.curselection()
+    if not sel:
+        return
+    for i in reversed(sel):
+        historico_box.delete(i)
+    # Ao remover entradas do histórico, liberar flags para permitir novo registro
+    ultima_vela_analisada = None
+    ultimo_sinal_notificado = None
+    status_label.config(text="✅ Histórico atualizado (seleção removida)", fg="cyan")
+
+historico_box.bind('<Delete>', lambda e: remover_historico_selecionado())
 
 # --- CONTROLES ---
 btn_f = Frame(root, bg="#0d0d0d")
 btn_f.pack(pady=10)
 Button(btn_f, text="▶ INICIAR MOTOR", command=iniciar, bg="#00aa88", width=18, font=("Arial", 11, "bold")).grid(row=0, column=0, padx=10)
 Button(btn_f, text="■ PARAR MOTOR", command=parar, bg="#aa3333", width=18, fg="white", font=("Arial", 11, "bold")).grid(row=0, column=1, padx=10)
+Button(btn_f, text="⏱ RUN BACKTEST", command=iniciar_backtest_thread, bg="#444", width=12, fg="white", font=("Arial", 9)).grid(row=0, column=2, padx=8)
 
 
 root.mainloop()
