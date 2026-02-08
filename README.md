@@ -75,6 +75,10 @@ Coluna 3: Foco em Volatilidade (Bollinger) e Exaustão (CCI/Stoch).
 ESTE SOFTWARE É PARA FINS DIDÁTICOS E ANALÍTICOS.
 O trading envolve risco de perda de capital. O desenvolvedor não se responsabiliza por perdas financeiras decorrentes do uso desta ferramenta. Sempre teste suas estratégias em conta de demonstração.
 
+ ## 📸 Preview do programa
+ 
+ <img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/16f858d2-ff66-4538-919b-fbb721c630ce" />
+
 
 <p align="center">
 Desenvolvido com ❤️ por <strong>Rafiki Trader</strong>
