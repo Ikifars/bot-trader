@@ -544,7 +544,7 @@ root = Tk()
 root.title("Rafiki Trader PRO")
 # Tema sutil 'hacker': fonte monoespaçada por padrão (não altera cores dos indicadores)
 root.option_add("*Font", "Consolas 10")
-root.geometry("600x730") 
+root.geometry("535x730") 
 root.configure(bg="#0d0d0d")
 
 news_frame = Frame(root, bg="#222", height=30)
@@ -673,7 +673,7 @@ def remover_historico_selecionado():
         return
     for i in reversed(sel):
         historico_box.delete(i)
-    # Ao remover entradas do histórico, libera flags para permitir novo registro
+    # Ao remover entradas do histórico, liberar flags para permitir novo registro
     ultima_vela_analisada = None
     ultimo_sinal_notificado = None
     status_label.config(text="✅ Histórico atualizado (seleção removida)", fg="cyan")
