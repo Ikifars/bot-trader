@@ -77,9 +77,13 @@ O trading envolve risco de perda de capital. O desenvolvedor não se responsabil
 
  ## 📸 Preview do programa
  
- <img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/16f858d2-ff66-4538-919b-fbb721c630ce" />
-
-
+<p align="center">
+ <img width="750" height="768" alt="Captura de Tela (45)" src="https://github.com/user-attachments/assets/89b434bd-9349-45cb-a41e-b851100f2070" />
+ <br><br>
+ <img width="750" height="768" alt="Captura de Tela (46)" src="https://github.com/user-attachments/assets/2c76edb7-80df-498b-bd0e-5287fb5c80c9" />
+ <br><br>
+ <img width="750" height="768" alt="Captura de Tela (47)" src="https://github.com/user-attachments/assets/b9c58209-2654-4e95-872b-ab726fbb1630" />
+</p>
 <p align="center">
 Desenvolvido com ❤️ por <strong>Rafiki Trader</strong>
 </p>
