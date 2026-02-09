@@ -288,9 +288,11 @@ def analisar():
                     sinal, cor, f_v, f_s = ESTRATEGIAS[ESTRATEGIA](df_closed)
                     
                     # Filtros de Tendência Macro H1
-                    t_h1 = verificar_tendencia_macro(PAR)
-                    if "CALL" in sinal and t_h1 == "BAIXA":
-                        sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
+                    if macro_h1_var.get():
+                        t_h1 = verificar_tendencia_macro(PAR)
+                        if "CALL" in sinal and t_h1 == "BAIXA":
+                            sinal, cor = "⏳ AGUARDAR (H1 Baixa)", "gray"
+
                     elif "PUT" in sinal and t_h1 == "ALTA":
                         sinal, cor = "⏳ AGUARDAR (H1 Alta)", "gray"
 
@@ -339,11 +341,13 @@ def analisar():
                     # --- LÓGICA DE ALERTA SEM SPAM (após filtros) ---
                     global ultima_vela_analisada, ultimo_sinal_notificado
                     if filtros_ok and ("📈" in sinal or "📉" in sinal):
-                        if timestamp_atual != ultima_vela_analisada or sinal != ultimo_sinal_notificado:
+                        chave_atual = (timestamp_atual, sinal, PAR)
+                        if chave_atual != ultimo_sinal_notificado:
                             ultima_vela_analisada = timestamp_atual
-                            ultimo_sinal_notificado = sinal
+                            ultimo_sinal_notificado = chave_atual
+
                             winsound.Beep(1000, 500)
-                            reg = f"{datetime.now().strftime('%H:%M:%S')} | {sinal} | Conf: {f_s}%"
+                            reg = f"{datetime.now().strftime('%H:%M:%S')} | {PAR} | {sinal} | Conf: {f_s}%"
                             root.after(0, lambda r=reg: adicionar_historico(r))
                     elif not filtros_ok and ("📈" in sinal or "📉" in sinal):
                         # opcional: log breve motivo bloqueio (não enfileira no histórico principal)
@@ -379,6 +383,63 @@ def aplicar_config():
         status_label.config(text=f"✅ SISTEMA CALIBRADO", fg="cyan")
     except Exception as e:
         status_label.config(text=f"Erro: {e}", fg="red")
+
+def resetar_configuracoes():
+    global CONFIG
+
+    # Reset CONFIG
+    CONFIG.clear()
+    CONFIG.update({
+        "RSI_PERIODO": 14,
+        "RSI_UPPER": 70,
+        "RSI_LOWER": 30,
+        "EMA_CURTA": 9,
+        "EMA_LONGA": 21,
+        "EMA_TENDENCIA": 100,
+        "ADX_PERIODO": 14,
+        "ADX_MINIMO": 25,
+        "CCI_PERIODO": 20,
+        "CCI_EXTREMO": 100,
+        "BB_PERIODO": 20,
+        "BB_DESVIO": 2,
+        "STOCH_K": 14,
+        "STOCH_D": 3,
+        "MACD_FAST": 12,
+        "MACD_SLOW": 26,
+        "MIN_CONFLUENCE": 30,
+        "MAX_ATR_PCT": 1.0,
+        "MIN_DIST_EMA_PCT": 0.02,
+        "MAX_DIST_BB_PCT": 0.3,
+        "NEWS_BLOCK": True
+    })
+
+    # Reset painel técnico
+    rsi_p_var.set("14")
+    rsi_u_var.set("70")
+    rsi_l_var.set("30")
+    ema_c_var.set("9")
+    ema_l_var.set("21")
+    ema_t_var.set("100")
+    adx_p_var.set("14")
+    adx_m_var.set("25")
+    cci_p_var.set("20")
+    cci_e_var.set("100")
+    bb_p_var.set("20")
+    bb_d_var.set("2")
+    st_k_var.set("14")
+    st_d_var.set("3")
+    mc_f_var.set("12")
+    mc_s_var.set("26")
+
+    # Reset filtros avançados
+    min_conf_var.set("30")
+    max_atr_var.set("1.0")
+    min_dist_ema_var.set("0.02")
+    max_dist_bb_var.set("0.3")
+    news_block_var.set(True)
+
+    status_label.config(text="♻️ Configurações resetadas para padrão", fg="cyan")
+
 
 def run_backtest(days=30):
     try:
@@ -483,7 +544,7 @@ root = Tk()
 root.title("Rafiki Trader PRO")
 # Tema sutil 'hacker': fonte monoespaçada por padrão (não altera cores dos indicadores)
 root.option_add("*Font", "Consolas 10")
-root.geometry("550x700") 
+root.geometry("600x730") 
 root.configure(bg="#0d0d0d")
 
 news_frame = Frame(root, bg="#222", height=30)
@@ -553,6 +614,8 @@ max_atr_var = StringVar(value=str(CONFIG.get("MAX_ATR_PCT", 1.0)))
 min_dist_ema_var = StringVar(value=str(CONFIG.get("MIN_DIST_EMA_PCT", 0.02)))
 max_dist_bb_var = StringVar(value=str(CONFIG.get("MAX_DIST_BB_PCT", 0.3)))
 news_block_var = BooleanVar(value=CONFIG.get("NEWS_BLOCK", True))
+macro_h1_var = BooleanVar(value=True)
+
 
 Label(f_filtros, text="Min Confluência:", fg="white", bg="#0d0d0d").grid(row=0, column=0, sticky="e")
 Entry(f_filtros, textvariable=min_conf_var, width=6).grid(row=0, column=1, padx=6)
@@ -568,6 +631,7 @@ Label(f_filtros, text="Max Dist BB (%):", fg="white", bg="#0d0d0d").grid(row=1, 
 Entry(f_filtros, textvariable=max_dist_bb_var, width=6).grid(row=1, column=4, padx=6)
 
 Checkbutton(f_filtros, text="Bloquear em notícias", variable=news_block_var, bg="#0d0d0d", fg="white", selectcolor="#222").grid(row=2, column=0, columnspan=2, sticky="w", pady=6)
+Checkbutton(f_filtros, text="Filtro Macro H1", variable=macro_h1_var, bg="#0d0d0d", fg="white", selectcolor="#222").grid(row=2, column=3, columnspan=2, sticky="w", pady=6)
 
 # Atualiza CONFIG assim que o usuário altera (responsivo)
 def _on_filtro_change(*args):
@@ -581,6 +645,7 @@ for v in (min_conf_var, max_atr_var, min_dist_ema_var, max_dist_bb_var):
 news_block_var.trace_add('write', _on_filtro_change)
 
 Button(root, text="🔄 APLICAR TUDO", command=aplicar_config, bg="#333", fg="white", font=("Arial", 9, "bold")).pack(pady=5, fill="x", padx=50)
+Button(root, text="♻️ RESETAR PADRÃO", command=resetar_configuracoes, bg="#552222", fg="white", font=("Arial", 9, "bold")).pack(pady=2, fill="x", padx=50)
 
 
 # --- RESULTADOS ---
@@ -608,7 +673,7 @@ def remover_historico_selecionado():
         return
     for i in reversed(sel):
         historico_box.delete(i)
-    # Ao remover entradas do histórico, liberar flags para permitir novo registro
+    # Ao remover entradas do histórico, libera flags para permitir novo registro
     ultima_vela_analisada = None
     ultimo_sinal_notificado = None
     status_label.config(text="✅ Histórico atualizado (seleção removida)", fg="cyan")
