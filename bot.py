@@ -689,5 +689,3 @@ Button(btn_f, text="⏱ RUN BACKTEST", command=iniciar_backtest_thread, bg="#444
 
 
 root.mainloop()
-
-
